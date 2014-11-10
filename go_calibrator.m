@@ -1,13 +1,14 @@
 function go_calibrator
 % Conducts calibrations for 3D kinematic experiments that use GoPro cameras
-% Requires Matlab 2014b (or later) and Computer Vision Toolbox
+% Requires Matlab 2014b (or later), Computer Vision Toolbox and Image
+% Processing Toolbox.
 
 
 %% Code execution
 
 % Determines the camera parameters (i.e. lens correction) for single HERO4 
 % in 720 'narrow' mode
-lens_calibration = 1;
+lens_calibration = 0;
 
 % Determines all parameters for a stero calibration that uses two HERO4s in
 % 720 'narrow' mode
@@ -69,8 +70,9 @@ check_path = [root filesep '/Projects/gopro kinematics/lens correction/Mchero4_A
 stereo_path = [root filesep '/Projects/gopro kinematics/stereo calibration'];
 
 % Path of calibration movies for 3D calibration
-threeD_path = [root filesep '/Projects/gopro kinematics/threeD calibration'];
-
+%threeD_path = [root filesep '/Projects/gopro kinematics/threeD calibration'];
+threeD_path = [root filesep '/Projects/gopro kinematics/3d pred prey trial/calibration2'];
+    
 % Path of files for testing the calibration
 test_path = [root filesep 'Projects/gopro kinematics/calibration test'];
 
@@ -388,147 +390,200 @@ end
 %% threeD_calibration
 
 % Directory for calibration data
-if threeD_calibration % ~isempty(dir([threeD_path filesep 'threeD calibration.mat']))
+if threeD_calibration %isempty(dir([threeD_path filesep 'threeD calibration.mat']))
+
+% Check number of cameras
+num_cam = length(dir([threeD_path filesep 'McHero4*']));
+
+if (num_cam < 2) || (num_cam > 3)
+    error('There needs to be 2 or 3 cameras in your setup')
+end
 
 % Load camera parameters for lens distortion ('cameraParams')
 load([check_path filesep 'calibration data' filesep 'camera parameters.mat'])
 
 % Paths to 3D calibration videos
-cal_pathA = [threeD_path filesep 'Mchero4_A'];    
-cal_pathB = [threeD_path filesep 'Mchero4_B']; 
+cal_path{1} = [threeD_path filesep 'Mchero4_A'];    
+cal_path{2} = [threeD_path filesep 'Mchero4_B']; 
+cal_path{3} = [threeD_path filesep 'Mchero4_C']; 
 
-% Get filename
-aA = dir([cal_pathA filesep '*.MP4']);
-aB = dir([cal_pathB filesep '*.MP4']);
-
-% Check for video
-if length(aA)~=1
-    error(['Expecting one video file in ' cal_pathA])
-elseif length(aB)~=1
-    error(['Expecting one video file in ' cal_pathB])
+% Initialize for each cam
+for i = 1:num_cam   
+    
+    % Get video path
+    a = dir([cal_path{i} filesep '*.MP4']);
+    
+    % Check for video
+    if length(a)~=1
+        error(['Expecting one video file in ' cal_path{i}])
+    end
+    
+    % Create objects for video files
+    vid_obj{i} = VideoReader([cal_path{i} filesep a(1).name]);
+    
+    % Get frames of movie
+    nFrames{i} = vid_obj{i}.NumberOfFrames;
+    
+    % Define vectors of frame numbers
+    fr_num{i} = round(linspace(nFrames{i}.*.1,nFrames{i}.*.8,numCalIm));
+    
 end
 
-% Create objects for video files
-vid_objA = VideoReader([cal_pathA filesep aA(1).name]);
-vid_objB = VideoReader([cal_pathB filesep aB(1).name]);
 
-% Get frames of movie
-nFramesA = vid_objA.NumberOfFrames;
-nFramesB = vid_objB.NumberOfFrames;
+% STEP 1: GET ROI ---------------------------------------------------------
 
-% Define vectors of frame numbers
-fr_numA = round(linspace(nFramesA.*.1,nFramesA.*.8,numCalIm));
-fr_numB = round(linspace(nFramesB.*.1,nFramesB.*.8,numCalIm));
+if isempty(dir([threeD_path filesep 'roi data.mat']));
+    
+    figure; warning off; beep; beep
+    
+    for i = 1:num_cam
+        
+        % Current frame
+        c_frame = round(length(fr_num{i})/2);
+        
+        % Read frame
+        im = read(vid_obj{i},fr_num{i}(c_frame));
+        
+        % Convert to gray
+        im = rgb2gray(im);
+        
+        % Undistorted image
+        [im, newOrigin] = undistortImage(im, cameraParams);
+        
+        % Show
+        imshow(im);
+        title(['Select region of interest, cam ' num2str(i) ' of ' ...
+               num2str(num_cam)])
+        
+        % Interactively find ellipse
+        disp('Drag ellipse shape to choose elliptical ROI, press RETURN')
+        h = imellipse; pause
+        
+        % Get roi coordinates, create binary mask
+        roi{i} = getVertices(h);
+        
+        % Return image within roi
+        im = give_roi(im,roi{i});
+        
+        % Desplay, for verification
+        imshow(im)
+        pause(1)
+    end
 
-% Make directories
-[success,message,id] = mkdir(cal_pathA,'frames');
-[success,message,id] = mkdir(cal_pathB,'frames');
-
-% Loop thru calibration images
-for i = 1:numCalIm
-
-    % Read frames
-    imA = read(vid_objA,fr_numA(i));
-    imB = read(vid_objB,fr_numB(i));
-
-    % Convert to gray
-    IA = rgb2gray(imA);
-    IB = rgb2gray(imB);
-
-    % Undistorted image
-    [unA, newOriginA] = undistortImage(IA, cameraParams);
-    [unB, newOriginB] = undistortImage(IB, cameraParams);
-
-    % Frame string
-    fr_str = ['000000' num2str(fr_numA(i))];
-
-    % Paths
-    pathA = [cal_pathA filesep 'frames' filesep 'frame ' ...
-                 fr_str(end-5:end) '.tif'];
-    pathB = [cal_pathB filesep 'frames' filesep 'frame ' ...
-                 fr_str(end-5:end) '.tif'];
-
-    % Write image files
-    imwrite(unA,pathA,'TIFF');
-    imwrite(unB,pathB,'TIFF');  
-
-    % Save paths
-    Afiles{i} = pathA;
-    Bfiles{i} = pathB;
+    warning on
+    
+    % Save data
+    save([threeD_path filesep 'roi data.mat'],'roi')
+    
+    % Clear variables
+    clear newOrigin im c_frame h 
+    
+else
+    % Load roi data ('roi')
+    load([threeD_path filesep 'roi data.mat'])
 end
 
-% Update status
-disp('Done step 1')
 
-% Detect the checkerboard corners in the images.
-[imPtsA,brdSizeA,imUsedA] = detectCheckerboardPoints(Afiles);
-[imPtsB,brdSizeB,imUsedB] = detectCheckerboardPoints(Bfiles);
 
-% Remove unused images
-Afiles = removed_unused(Afiles,imUsedA);
-Bfiles = removed_unused(Bfiles,imUsedB);
+% STEP 1: CREATE CALIBRATION IMAGES ---------------------------------------
 
-% Create checkerboard points
-worldPoints = generateCheckerboardPoints(brdSizeA, stereo_sqsize);
+disp(' Creating calibration images . . .')
 
-% Find camera parameters 
-[cameraParamA, imUsedA, estErrorsA] = estimateCameraParameters(...
-                            imPtsA, worldPoints, ...
-                            'EstimateSkew', false, ...
-                            'EstimateTangentialDistortion', true, ...
-                            'NumRadialDistortionCoefficients', 3, ...
-                            'WorldUnits', 'm');
-[cameraParamB, imUsedB, estErrorsB] = estimateCameraParameters(...
-                            imPtsB, worldPoints, ...
-                            'EstimateSkew', false, ...
-                            'EstimateTangentialDistortion', true, ...
-                            'NumRadialDistortionCoefficients', 3, ...
-                            'WorldUnits', 'm');
+% Loop thru for each cam
+for i = 1:num_cam
 
-% Update status
-disp('Done step 2')
+    % Make directories
+    [success,message,id] = mkdir(cal_path{i},'frames');
+    
+    % Loop thru calibration images
+    for j = 1:numCalIm
 
-% Remove unused images
-Afiles = removed_unused(Afiles,imUsedA);
-Bfiles = removed_unused(Bfiles,imUsedB);
-
-% Translate detected points back into the original image coordinates
-refPtsA = bsxfun(@plus, imPtsA, newOriginA);
-refPtsB = bsxfun(@plus, imPtsB, newOriginB);
-
-% Calcualte mean extrinsic propterties of cameras
-[RA, tA] = calc_extrinsics(imPtsA, worldPoints, imUsedA, cameraParamA);
-[RB, tB] = calc_extrinsics(imPtsB, worldPoints, imUsedB, cameraParamB);
-
-% Calculate camera matrices from mean extrinsics
-camMatrixA = cameraMatrix(cameraParamA, RA, tA);
-camMatrixB = cameraMatrix(cameraParamB, RB, tB);
-
-% Write results of indivudal cameras to disk
-write_cal_results(cal_pathA, Afiles, imUsedA, imPtsA, cameraParamA);
-write_cal_results(cal_pathB, Bfiles, imUsedB, imPtsB, cameraParamB);
-
-% Save calibration data for camera A
-cal.A.cameraParams  = cameraParamA;
-cal.A.R             = RA;
-cal.A.t             = tA;
-cal.A.camMatrix     = camMatrixA;
-cal.A.imPts         = imPtsA;
-
-% Save calibration data for camera B
-cal.B.cameraParams  = cameraParamB;
-cal.B.R             = RB;
-cal.B.t             = tB;
-cal.B.camMatrix     = camMatrixB;
-cal.B.imPts          = imPtsB;
-
-% Save calibration data 
-save([threeD_path filesep 'threeD calibration.mat'],'cal');  
-
-% Update status
-disp('Finished')
+        % Read frame
+        im = read(vid_obj{i},fr_num{i}(j));
+    
+        % Convert to gray
+        I = rgb2gray(im);
+        
+        % Undistorted image
+        [unI, newOrigin{i}(j,:)] = undistortImage(I, cameraParams);
+        
+        % Return image within roi
+        unI = give_roi(unI,roi{i});
+        
+        % Frame string
+        fr_str = ['000000' num2str(fr_num{i}(j))];
+        
+        % Paths
+        im_path = [cal_path{i} filesep 'frames' filesep 'frame ' ...
+            fr_str(end-5:end) '.tif'];
+        
+        % Write image files
+        imwrite(unI,im_path,'TIFF');
+        
+        % Save paths
+        im_file{i}.path{j} = im_path;
+    end
+    
+    % Update status
+    disp(['          . . . done cam ' num2str(i) ' of ' num2str(num_cam)])
 end
 
+
+% STEP 3: RUN CALIBRATION -------------------------------------------------
+
+% Update status
+disp(' Running calibration . . .')
+
+% Loop thru cameras
+for i = 1:num_cam
+    
+    % Detect the checkerboard corners in the images.
+    [imPts,brdSize,imUsed] = detectCheckerboardPoints(im_file{i}.path);
+    
+    % Remove unused images
+    im_file{i}.path = removed_unused(im_file{i}.path,imUsed);
+  
+    % Create checkerboard points
+    worldPoints = generateCheckerboardPoints(brdSize, stereo_sqsize);
+    
+    % Find camera parameters
+    [cameraParam, imUsed, estErrors] = estimateCameraParameters(...
+        imPts, worldPoints, ...
+        'EstimateSkew', false, ...
+        'EstimateTangentialDistortion', true, ...
+        'NumRadialDistortionCoefficients', 3, ...
+        'WorldUnits', 'm');
+
+    % Remove unused images
+    im_file{i}.path = removed_unused(im_file{i}.path,imUsed);
+    
+    % Translate detected points back into the original image coordinates
+    refPts = bsxfun(@plus, imPts, mean(newOrigin{i},2));
+    
+    % Calcualte mean extrinsic propterties of cameras
+    [R, t] = calc_extrinsics(imPts, worldPoints, imUsed, cameraParam);
+    
+    % Calculate camera matrices from mean extrinsics
+    camMatrix = cameraMatrix(cameraParam, R, t);
+    
+    % Write results of indivudal cameras to disk
+    write_cal_results(cal_path{i}, im_file{i}.path, imUsed, imPts, cameraParam);
+    
+    % Save calibration data for camera A
+    cal{i}.cameraParams  = cameraParam;
+    cal{i}.R             = R;
+    cal{i}.t             = t;
+    cal{i}.camMatrix     = camMatrix;
+    cal{i}.imPts         = imPts;
+
+    % Update status
+    disp(['          . . . done cam ' num2str(i) ' of ' num2str(num_cam)])
+end
+
+% Save calibration data
+save([threeD_path filesep 'threeD calibration.mat'],'cal');
+
+end
 
 %% Audio sync test
 
@@ -561,188 +616,21 @@ title('After correction')
 end
 
 
-%% Play with calibration
 
 
-%TODO: 
-% 1. Fuse the two calibrations to generate common coordinate system
-% This is a start: Use the following code to display the checkboard used
-% in the calibration in 3D space.  Try to figure out how it defines the origin
-% Code:  [worldPoints,reprojErrors] = triangulate(imPtsA,imPtsB,camMatrixA,camMatrixB);
 
-% 2. Define a voxal spatial domain -- define coordinates 
 
+function  im = give_roi(im,roi)
+% Return image in roi, with adjusted contrast
 
+% Define mask
+BW = poly2mask(roi(:,1),roi(:,2),size(im,1),size(im,2)); 
 
-return 
+% Update image, for verification
+im(~BW) = 0;
 
-
-if threeD_play
-
-% Load 'cal' structure for 3D calibration
-load([threeD_path filesep 'threeD calibration.mat'])
- 
-% Frame number to analyze
-fr_num = 1;
-
-% Paths videos
-%pathA = [test_path filesep 'Mchero4_A'];    
-%pathB = [test_path filesep 'Mchero4_B']; 
-% Paths to 3D calibration videos
-pathA = [threeD_path filesep 'Mchero4_A'];    
-pathB = [threeD_path filesep 'Mchero4_B']; 
-
-
-% Get filenames
-aA = dir([pathA filesep '*.MP4']);
-aB = dir([pathB filesep '*.MP4']);
-
-% Check for single video
-if length(aA)~=1
-    error(['Expecting one video file in ' pathA])
-elseif length(aB)~=1
-    error(['Expecting one video file in ' pathB])
-end
-
-% Create objects for video files
-vid_objA = VideoReader([pathA filesep aA(1).name]);
-vid_objB = VideoReader([pathB filesep aB(1).name]);
-
-% Get frames of movie
-nFramesA = vid_objA.NumberOfFrames;
-nFramesB = vid_objB.NumberOfFrames;
-
-% Read frame
-frA = read(vid_objA,fr_num);
-frB = read(vid_objB,fr_num);
-
-% Convert to gray
-IA = rgb2gray(frA);
-IB = rgb2gray(frB);
-
-% Undistorted image
-[unA, newOriginA] = undistortImage(IA, cal.A.cameraParams);
-[unB, newOriginB] = undistortImage(IB, cal.B.cameraParams);
-
-% Detect the checkerboard corners in the images.
-[imPtsA,brdSizeA,imUsedA] = detectCheckerboardPoints(unA);
-[imPtsB,brdSizeB,imUsedB] = detectCheckerboardPoints(unB);
-
-% Add markers in A
-imA = insertMarker(unA, imPtsA, 'o', 'Color', 'green', 'Size', 5);
-imA = insertMarker(imA, imPtsA(1,:), 's', 'Color', 'yellow', 'Size', 8);
-
-% Add markers in B
-imB = insertMarker(unB, imPtsB, 'o', 'Color', 'green', 'Size', 5);
-imB = insertMarker(imB, imPtsB(1,:), 's', 'Color', 'yellow', 'Size', 8);
-
-% Detect feature points
-%imPtsA = detectSURFFeatures(unA, 'MetricThreshold', 600);
-%imPtsB = detectSURFFeatures(unB, 'MetricThreshold', 600);
-
-% Extract feature descriptors
-%featuresA = extractFeatures(unA,imPtsA);
-%featuresB = extractFeatures(unB,imPtsB);
-
-%indexPairs = matchFeatures(featuresA, featuresB, 'MaxRatio', 0.4);
-%matchedPtsA = imPtsA(indexPairs(:, 1));
-%matchedPtsB = imPtsB(indexPairs(:, 2));
-
-
-% Visualize several extracted SURF features from the Globe01 image
-figure;
-subplot(2,2,1)
-imshow(imA);
-hold on
-%title('1500 Strongest Feature Points from Globe01');
-%plot(selectStrongest(imPtsA, 50));
-
-
-
-subplot(2,2,2)
-imshow(imB);
-hold on
-%plot(selectStrongest(imPtsB, 50));
-
-subplot(2,2,3:4)
-showMatchedFeatures(unA, unB, imPtsA, imPtsB);
-title('Original Matched Features from Globe01 and Globe02');
-
-
-
-
-
-
-
-
-% Visualize correspondences
-figure;
-showMatchedFeatures(frA, frB, matchedPoints1, matchedPoints2);
-title('Original Matched Features from Globe01 and Globe02');
-
-% Transform matched points to the original image's coordinates
-matchedPoints1.Location = bsxfun(@plus, matchedPoints1.Location, newOriginA);
-matchedPoints2.Location = bsxfun(@plus, matchedPoints2.Location, newOriginB);
-
-
-
-
-
-
-end
-
-
-return
-
-
-%% Test the calibration
-
-if test_calibration      
-    
-% Load cameraParams
-load([check_path filesep 'camera parameters.mat']);
-
-% Load stereo parameters ('cal')
-load([stereo_path filesep 'stereo calibration.mat']);
-
-% load worldPoints
-load([check_path filesep 'world points.mat']);
-
-% Paths for calibration images
-aA = dir([test_path filesep 'Mchero4_A' filesep '*.MP4']);    
-aB = dir([test_path filesep 'Mchero4_B' filesep '*.MP4']);  
-
-% Check dir
-if length(aA)~=1 || length(aB)~=1
-    error('Expecting one video file')
-end
-
-% Define video object
-vid_objA = VideoReader([test_path filesep 'Mchero4_A' filesep aA(1).name]);
-vid_objB = VideoReader([test_path filesep 'Mchero4_B' filesep aB(1).name]);
-
-% Grab last frames
-frA = read(vid_objA,vid_objA.NumberOfFrames);
-frB = read(vid_objB,vid_objB.NumberOfFrames);
-
-% Undistort images (remove fisheye)
-[frA,newOriginA] = undistortImage(frA,cameraParams);
-[frB,newOriginB] = undistortImage(frB,cameraParams);
-
-figure
-subplot(1,2,1)
-imshow(frA)
-hold on
-
-subplot(1,2,2)
-imshow(frB)
-hold on
-
-
-
-
-
-end
+% Adjust contrast
+im = imadjust(im);
 
 
 
