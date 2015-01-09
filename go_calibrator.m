@@ -1,30 +1,21 @@
-function go_calibrator
-% Conducts calibrations for 3D kinematic experiments that use GoPro cameras
+function go_calibrator(threeD_path,sqsize)
+% Conducts calibration for 3D kinematic experiments that use GoPro cameras
 % Requires Matlab 2014b (or later), Computer Vision Toolbox and Image
 % Processing Toolbox.
+%
+% threeD_path - path to directory containing 3 directories of video files
 
 
 %% Code execution
 
-% Determines the camera parameters (i.e. lens correction) for single HERO4 
-% in 720 'narrow' mode
+% Determines the camera parameters (i.e. lens correction).
+% Has been run for single HERO4 in 720 'Narrow' mode. Code can be used for
+% other modes in the future.
 lens_calibration = 0;
 
-% Determines all parameters for a stero calibration that uses two HERO4s in
-% 720 'narrow' mode
-stereo_calibration = 0;
-
-% Test calibration with known landmarks
-test_calibration = 0;
-
 % Adopts an alternate approach to 3D calibaration (may be more scalable)
-threeD_calibration = 0;
-
-% Toy with 3D calibration
-threeD_play = 0;
-
-% Tests using the audio channel to synchronize two cameras
-test_sync = 0;
+% Uses two or three HERO4s in 720 'narrow' mode
+threeD_calibration = 1;
 
 
 %% Parameter values
@@ -35,13 +26,14 @@ numCalIm = 20;
 % Size of checkerboard square (m)
 %sqr_size = 8.261e-3;
 
-% Size of square in small checkerboard  for stero calibration (m)
-stereo_sqsize = 8.145e-3;
+% Default size of square in small checkerboard  for 3D calibration (m)
+sqsize_3D = 8.145e-3;
 
+% Difference in number of images between calibration runs  
 num_increment = 10;
 
-% Size of square in large checkerboard for lens distortion calibration (m)
-lens_sqsize = 21.7014e-3;
+% Default size of square in large checkerboard for lens distortion calibration (m)
+sqsize_lens = 21.7014e-3;
 
 % Write results of calibration to disk
 write_results = 1;
@@ -53,18 +45,18 @@ num_fr0 = 30;
 %% Paths
 
 % Matt's computer
-if ~isempty(dir('/Users/mmchenry/Documents/Projects'))
-    
+if ~isempty(dir('/Users/mmchenry/Documents/Projects'))   
     % Directory root
     root = '/Users/mmchenry/Documents';
- 
 else
     error('This computer is not recognized')
 end
 
-% Checkboard video file for single camera calibration (lens correction)
-check_path = [root filesep '/Projects/gopro kinematics/lens correction/Mchero4_A'];
-%check_name = 'checkerboard video1.MP4';
+% Video path
+video_path = [root filesep 'Documents/GoPro Video'];
+
+% Checkboard video file for single camera calibration (Lens correction, 720 Narrow)
+check_path = [root filesep '/Projects/gopro kinematics/Lens correction, 720 Narrow/Mchero4_A'];
 
 % Path of calibration movies for stero calibration
 stereo_path = [root filesep '/Projects/gopro kinematics/stereo calibration'];
@@ -83,7 +75,14 @@ audiotest_path = [root filesep 'Projects/gopro kinematics/audio sync test'];
 %% Run Lens Calibration
 
 if lens_calibration
-    
+
+% Make sure this is intended
+button = questdlg(['The lens has been calibrated for 720 narrow -- ' ...
+      'Are you sure you wish to proceed?'],'','Yes','No','Cancel','Yes');  
+if ~strcmp(button,'Yes')
+    return
+end
+
 % Number of outlier frames to removed after initial calibration
 num_remove = 3;
 
@@ -130,7 +129,7 @@ end
 
 % Generate the world coordinates of the checkerboard corners in the
 % pattern-centric coordinate system, with the upper-left corner at (0,0).
-worldPoints = generateCheckerboardPoints(boardSize, lens_sqsize);
+worldPoints = generateCheckerboardPoints(boardSize, sqsize_lens);
 
 % Calibrate the camera
 try
@@ -183,7 +182,7 @@ if (length(meanErrors)-num_remove) > min_images
     
     % Generate the world coordinates of the checkerboard corners in the
     % pattern-centric coordinate system, with the upper-left corner at (0,0).
-    worldPoints = generateCheckerboardPoints(boardSize, lens_sqsize);
+    worldPoints = generateCheckerboardPoints(boardSize, sqsize_lens);
     
     % Calibrate the camera again, this time with top images
     try
@@ -261,137 +260,18 @@ end
 
 end
 
-
-%% Stereo Calibration
-
-if stereo_calibration
-
-% Paths for calibration images
-im_pathA = [stereo_path filesep 'Mchero4_A' filesep 'frames, undistorted'];    
-im_pathB = [stereo_path filesep 'Mchero4_B' filesep 'frames, undistorted'];  
-
-%  Create calibration images    
-write_cal_images(numCalIm,[stereo_path filesep 'Mchero4_A'],...
-                          [stereo_path filesep 'Mchero4_B']);                                                  
-    
-% Remove fisheye from calibration images
-remove_fish([stereo_path filesep 'Mchero4_A'],check_path);
-
-% Remove fisheye from calibration images
-remove_fish([stereo_path filesep 'Mchero4_B'],check_path);
-
-% Get listings of undistorted calibration images
-aA = dir([im_pathA filesep 'frame*.tif']);                      
-aB = dir([im_pathB filesep 'frame*.tif']); 
-
-% Check for same number of images
-if length(aA)~=length(aB)
-    error('Need same number of calibration images from the two cameras')
-end
-
-% Gather listing of calibration images
-for i = 1:length(aA)   
-   % A cam
-   Afiles{i} = [im_pathA filesep aA(i).name];  
-   % B cam
-   Bfiles{i} = [im_pathB filesep aB(i).name];  
-end
-
-% Detect the checkerboard corners in the images.
-[imPoints,boardSize,imUsed] = detectCheckerboardPoints(Afiles,Bfiles);
-
-% Visualize this step
-figure
-subplot(1,2,1)
-warning off
-imshow(imread(Afiles{1}))
-warning on
-if ~isempty(imPoints)
-    hold on
-    plot(imPoints(:, 1, 1, 1), imPoints(:, 2, 1, 1), '+g',...
-        imPoints(1, 1, 1, 1), imPoints(1, 2, 1, 1), 'sy');
-end
-title('Left cam')
-
-subplot(1,2,2)
-warning off
-imshow(imread(Bfiles{1}))
-warning on
-if ~isempty(imPoints)
-    hold on
-    plot(imPoints(:, 1, 1, 2), imPoints(:, 2, 1, 2), '+g',...
-        imPoints(1, 1, 1, 2), imPoints(1, 2, 1, 2), 'sy');
-end
-title('Right cam')
-
-
-if isempty(imPoints)
-    error('Failed to detect checkboards');
-end
-
-% Report on images
-disp(['   ' num2str(sum(imUsed)) ' of ' num2str(length(imUsed)) ...
-    ' images were usable'])
-
-% Generate the world coordinates of the checkerboard corners in the
-% pattern-centric coordinate system, with the upper-left corner at (0,0).
-worldPoints = generateCheckerboardPoints(boardSize, stereo_sqsize);
-
-% Calibrate the camera
-try
-    stereoParams = estimateCameraParameters(imPoints,worldPoints, ...
-        'EstimateSkew', true, 'EstimateTangentialDistortion', true, ...
-        'NumRadialDistortionCoefficients', 3, 'WorldUnits', 'm');
-    
-    
-    trying = 0;
-   
-catch
-    % Report results
-    beep;beep;
-    disp('Calibration failed'); disp(' ')
-    
-    numCalIm = numCalIm + num_increment;
-    
-    if numCalIm > 50
-        disp(' ')
-        disp('All attempts failed');
-        disp(' ')
-        return
-    else
-        disp(['Trying again with ' num2str(numCalIm) ' frames . . .'])
-    end
-    stereoParams = [];
-    
-end
-
-% Show results
-figure;
-showReprojectionErrors(stereoParams);
-
-% Report results
-disp('Calibration completed !'); disp(' ')
-
-% Save data
-cal.Bfiles = Bfiles;
-cal.Afiles = Afiles;
-cal.sqSize = stereo_sqsize;
-cal.stereoParam = stereoParams;
-cal.imPoints = imPoints;
-cal.boardSize = boardSize;
-cal.imUsed = imUsed;
-cal.worldPoints = worldPoints;
-
-save([stereo_path filesep 'stereo calibration.mat'],'cal');
-
-end
-   
  
-%% threeD_calibration
+%% ThreeD_calibration
 
 % Directory for calibration data
 if threeD_calibration %isempty(dir([threeD_path filesep 'threeD calibration.mat']))
 
+% Select calibration directory
+if nargin < 1
+    disp('Note: the calibration directory should hold 3 folders starting with "McHero4"')
+    threeD_path = uigetdir(video_path,'Select directory for running calibration');
+end    
+    
 % Check number of cameras
 num_cam = length(dir([threeD_path filesep 'McHero4*']));
 
@@ -544,7 +424,7 @@ for i = 1:num_cam
     im_file{i}.path = removed_unused(im_file{i}.path,imUsed);
   
     % Create checkerboard points
-    worldPoints = generateCheckerboardPoints(brdSize, stereo_sqsize);
+    worldPoints = generateCheckerboardPoints(brdSize, sqsize);
     
     % Find camera parameters
     [cameraParam, imUsed, estErrors] = estimateCameraParameters(...
@@ -585,38 +465,6 @@ save([threeD_path filesep 'threeD calibration.mat'],'cal');
 
 end
 
-%% Audio sync test
-
-if test_sync
-    
-% Get paths for two video files
-[vid_pathA,vid_pathB] = get_videofiles(audiotest_path);
-
-% Extract audio
-[yA,FsA] = audioread(vid_pathA);
-[yB,FsB] = audioread(vid_pathB);
-
-yA = yA(:,1);
-yB = yB(:,1);
-
-tA = [0:(length(yA)-1)]./FsA;
-tB = [0:(length(yB)-1)]./FsB;
-
-delay = finddelay(yA,yB)./FsA;
-
-figure;
-subplot(2,1,1)
-plot(tA,yA,'-',tB,yB,'-')
-title('Before correction')
-
-subplot(2,1,2)
-plot(tA,yA,'-',tB-delay,yB,'-')
-title('After correction')
-
-end
-
-
-
 
 
 
@@ -631,7 +479,6 @@ im(~BW) = 0;
 
 % Adjust contrast
 im = imadjust(im);
-
 
 
 function varargout = get_videofiles(dir_path)
