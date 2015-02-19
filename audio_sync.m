@@ -1,54 +1,135 @@
-function aud = audio_sync(video_path, vid_path)
+function aud = audio_sync(video_path, skip_dur, read_dur)
 % Save or load structure for syncing 3 video files from audio channels
 
-% Duration of audio for visualizing the correction
-audio_dur = 0.5;
-
-% Duration at start of audio signal to skip
-skip_dur = 0.5;
-
-% Total duration to consider (s)
-read_dur = 5; 
+%% Code execution
 
 % Plot data to verify correct sync
 plot_data = 1;
 
+% Choose a portion of the audio
+select_event = 1;
+
+
+%% Parameters
+
+if nargin < 3  
+    
+    % Total duration to consider (s)
+    read_dur = 5;  
+
+    if nargin < 2        
+        % Duration at start of audio signal to skip
+        skip_dur = 0.5;
+    end
+end
+
+% Duration of audio for visualizing the correction
+%audio_dur = read_dur ;
+
+
+%% Paths
+
+% Look for video directories
+a = dir([video_path filesep 'McHero4*']);
+
+% Store each
+for i = 1:length(a)
+    % Paths to videos
+    aud{i}.path = [video_path filesep a(i).name];
+end
+
 % Check for number of cameras
-if length(vid_path)~=3
+if length(a)~=3
     error('Expecting 3 cameras, 3 not given')
 end
 
+%% Prompt to overwrite
+
+% Ask for rerunning sync analysis
+if ~isempty(dir([video_path filesep 'delayinfo.mat']))
+    button = questdlg('Do you want to re-run the audio sync?','','Yes',...
+        'No','Cancel', 'Yes');
+    if strcmp(button, 'Yes')
+        do_sync = 1;
+    elseif strcmp(button,'No')
+        do_sync = 0;   
+    else
+        return
+    end
+    
+else
+    do_sync = 1;
+end
+
+
+%% Read audio tracks
+
+
+for i = 1:3
+    % Get video file path
+    a = dir([aud{i}.path filesep '*.MP4']);
+    
+    % Get audioinfo
+    aInfo = audioinfo([aud{i}.path filesep a(1).name]);
+    
+    % Extract audio
+    [tmp,aud{i}.Fs] = audioread(aInfo.Filename);
+    
+    % Choose channel with greater signal
+    if mean(abs(tmp(:,1))) > mean(abs(tmp(:,2)))
+        y = tmp(:,1);
+    else
+        y = tmp(:,2);
+    end
+    
+    % Time value
+    t = [0:(length(y)-1)]'./aud{i}.Fs;
+    
+    % Store values to be used
+    aud{i}.t = t;
+    aud{i}.y = y;
+end
+
+
+%% Prompt to select duration
+
+if select_event
+    
+    idx = 1:round(length(aud{1}.t)/4);
+    figure
+    plot(aud{1}.t(idx), aud{1}.y(idx), '-', ...
+         aud{2}.t(idx), aud{2}.y(idx), '-', ...
+         aud{3}.t(idx), aud{3}.y(idx), '-');
+    hold on
+    title('Select duration')
+    
+    [t1,tmp1] = ginput(1);
+    h2 = plot(t1,tmp1,'k+');
+    
+    [t2,tmp2] = ginput(1);
+    delete(h2)
+    plot([t1 t2 t2 t1 t1],[tmp1 tmp1 tmp2 tmp2 tmp1],'k-')
+    pause(0.5)
+    close
+    
+    skip_dur = min([t1 t2]);
+    read_dur = max([t1 t2]) - skip_dur;
+end
+
+%% Run sync
+
 % Create 'aud' structure, if delayinfo.mat file does not exist
-if isempty(dir([video_path filesep 'delayinfo.mat']))
+if do_sync
     
     % Loop thru cameras
     for i = 1:3
-        % Get video file path
-        a = dir([vid_path{i} filesep '*.MP4']);
-        
-        % Get audioinfo
-        aInfo = audioinfo([vid_path{i} filesep a(1).name]);
-        
-        % Extract audio
-        [tmp,aud{i}.Fs] = audioread(aInfo.Filename);
-        
-        % Choose channel with greater signal
-        if mean(abs(tmp(:,1))) > mean(abs(tmp(:,2)))
-            y = tmp(:,1);
-        else
-            y = tmp(:,2);
-        end
-        
-        % Time value
-        t = [0:(length(y)-1)]'./aud{i}.Fs;
-        
+       
         % Values to include
-        idx = (t > skip_dur) & (t < (read_dur+skip_dur));
+        idx = (aud{i}.t > skip_dur) & (aud{i}.t < (read_dur+skip_dur));
         
         % Store values to be used
-        aud{i}.path = vid_path{i};
-        aud{i}.t = t(idx);
-        aud{i}.y = y(idx);
+        aud{i}.t = aud{i}.t(idx);
+        aud{i}.y = aud{i}.y(idx);
         
         % Create audio player (for troubleshooting)
         aud{i}.player = audioplayer(aud{i}.y,aud{i}.Fs);
@@ -94,8 +175,9 @@ if isempty(dir([video_path filesep 'delayinfo.mat']))
         xlabel('Time (s)')
         ylabel('Audio track (V)')
         title('Before correction')
+        grid on
         
-        xlim([skip_dur skip_dur+audio_dur])
+       % xlim([skip_dur skip_dur+audio_dur])
         
         subplot(2,1,2)
         plot(aud{1}.t-aud{1}.delay,aud{1}.y,'-',...
@@ -104,8 +186,9 @@ if isempty(dir([video_path filesep 'delayinfo.mat']))
         xlabel('Time (s)')
         ylabel('Audio track (V)')
         title('After correction')
+        grid on
         
-        xlim([skip_dur skip_dur+audio_dur])
+        %xlim([skip_dur skip_dur+audio_dur])
         
         %xlim([0 .5])
     end

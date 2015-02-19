@@ -6,6 +6,11 @@ function go_kinematics(video_path)
 
 %% Code execution
 
+% Copy over sets of video files into directories
+organize_files = 1;
+
+view_video
+
 % Determines the camera parameters (i.e. lens correction) for single HERO4 
 % in 720 'narrow' mode
 lens_calibration = 0;
@@ -38,19 +43,27 @@ max_frames = 5;
 
 %% Paths
 
-% Matt's computer
-if ~isempty(dir('/Users/mmchenry/Documents'))    
+% Find root on Matt's computer
+if ~isempty(dir('/Users/mmchenry'))    
     % Directory root
-    root = '/Users/mmchenry/Documents'; 
+    root = '/Users/mmchenry/Dropbox/Projects/JimmyJacob'; 
 else
     error('This computer is not recognized')
 end
 
-% Checkboard video file for single camera calibration (lens correction)
-check_path = [root filesep '/Projects/gopro kinematics/Lens correction, 720 Narrow/Mchero4_A'];
+% Checkboard video file for single camera calibration (Lens correction, 720 Narrow)
+check_path720 = [root filesep '/Projects/gopro kinematics/Lens correction, 720 Narrow/Mchero4_A'];
+
+% Checkboard video file for single camera calibration (Lens correction, 1080 Narrow)
+check_path1080 = [root filesep '/Projects/gopro kinematics/Lens correction, 1080 Narrow/Mchero4_A'];
 
 % Path to video recordings
-video_root = '/Volumes/WD MACPART/Video/Liao pred-prey';
+video_root = '/Volumes/WD MACPART/Video/Liao pred-prey/organized files';
+
+% Check for external drive
+if isempty(dir(video_root))
+    error('If does not look like your external drive is plugged in');
+end
 
 % Get sequence path
 if nargin < 1
@@ -59,6 +72,76 @@ end
 
 % Path to calibration data
 cal_path = [root filesep 'Projects/gopro kinematics/3d pred prey trial/calibration2'];
+
+%
+data_path = [root filesep 'rawdata'];
+
+
+%% Organize files
+if organize_files
+   
+    % Check for video directories 
+    if isempty([video_path filesep 'expt_raw']) || ...
+       isempty([video_path filesep 'expt_raw' filesep 'McHero4*'])     
+        error(['You need to store video directories in a directory called "expt_raw"'])      
+    end
+    
+    % Inventory video files
+    aA = dir([video_path filesep 'expt_raw' filesep 'McHero4_A' filesep '*.MP4']);
+    aB = dir([video_path filesep 'expt_raw' filesep 'McHero4_B' filesep '*.MP4']);
+    aC = dir([video_path filesep 'expt_raw' filesep 'McHero4_C' filesep '*.MP4']);
+    
+    % Check for equal number of files
+    if (length(aA)~=length(aB)) || (length(aA)~=length(aC))
+        error('You need to have an equal number of files in each video directory')
+    end
+    
+    if isempty(aA)
+        error('No video files')
+    end
+    
+    % Make directories, copy files
+    
+    for i = 1:length(aA)
+        % Current experiment directory name
+        exp_num = ['00' num2str(i)];
+        dir_name = ['expt' exp_num(end-2:end)];
+        
+        % Make directories
+        if isempty(dir([video_path filesep dir_name filesep 'McHero4_A']))
+            mkdir([video_path filesep dir_name], 'McHero4_A');
+        end
+        
+        if isempty(dir([video_path filesep dir_name filesep 'McHero4_B']))
+            mkdir([video_path filesep dir_name], 'McHero4_B')
+        end
+        
+        if isempty(dir([video_path filesep dir_name filesep 'McHero4_C']))
+            mkdir([video_path filesep dir_name], 'McHero4_C')
+        end
+        
+        % Copy over video files
+        if isempty(dir([video_path filesep dir_name filesep 'McHero4_A' filesep aA(i).name]))
+            copyfile([video_path filesep 'expt_raw' filesep 'McHero4_A' filesep aA(i).name], ...
+                     [video_path filesep dir_name filesep 'McHero4_A' filesep aA(i).name]);
+        end
+            
+        if isempty(dir([video_path filesep dir_name filesep 'McHero4_B' filesep aB(i).name]))
+            copyfile([video_path filesep 'expt_raw' filesep 'McHero4_B' filesep aB(i).name], ...
+                     [video_path filesep dir_name filesep 'McHero4_B' filesep aB(i).name]);
+        end
+            
+        if isempty(dir([video_path filesep dir_name filesep 'McHero4_C' filesep aC(i).name]))
+            copyfile([video_path filesep 'expt_raw' filesep 'McHero4_C' filesep aC(i).name], ...
+                     [video_path filesep dir_name filesep 'McHero4_C' filesep aC(i).name]);
+        end
+        
+        % Report status
+        disp(['Done ' num2str(i) ' of ' num2str(length(aA))])
+    end
+end
+
+
 
 
 %% Load data

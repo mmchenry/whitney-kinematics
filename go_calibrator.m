@@ -1,4 +1,4 @@
-function go_calibrator(threeD_path,sqsize)
+function go_calibrator(threeD_path)
 % Conducts calibration for 3D kinematic experiments that use GoPro cameras
 % Requires Matlab 2014b (or later), Computer Vision Toolbox and Image
 % Processing Toolbox.
@@ -27,7 +27,10 @@ numCalIm = 20;
 %sqr_size = 8.261e-3;
 
 % Default size of square in small checkerboard  for 3D calibration (m)
-sqsize_3D = 8.145e-3;
+%sqsize_3D = 8.145e-3;
+
+% Whitney lab size of square in small checkerboard  for 3D calibration (m)
+sqr_size = 30.48e-2;
 
 % Difference in number of images between calibration runs  
 num_increment = 10;
@@ -53,17 +56,20 @@ else
 end
 
 % Video path
-video_path = [root filesep 'Documents/GoPro Video'];
+video_path = ['/Volumes/WD MACPART/Video/Liao pred-prey'];
 
 % Checkboard video file for single camera calibration (Lens correction, 720 Narrow)
-check_path = [root filesep '/Projects/gopro kinematics/Lens correction, 720 Narrow/Mchero4_A'];
+check_path720 = [root filesep '/Projects/gopro kinematics/Lens correction, 720 Narrow/Mchero4_A'];
+
+% Checkboard video file for single camera calibration (Lens correction, 1080 Narrow)
+check_path1080 = [root filesep '/Projects/gopro kinematics/Lens correction, 1080 Narrow/Mchero4_A'];
 
 % Path of calibration movies for stero calibration
 stereo_path = [root filesep '/Projects/gopro kinematics/stereo calibration'];
 
 % Path of calibration movies for 3D calibration
 %threeD_path = [root filesep '/Projects/gopro kinematics/threeD calibration'];
-threeD_path = [root filesep '/Projects/gopro kinematics/3d pred prey trial/calibration2'];
+%threeD_path = [root filesep '/Projects/gopro kinematics/3d pred prey trial/calibration2'];
     
 % Path of files for testing the calibration
 test_path = [root filesep 'Projects/gopro kinematics/calibration test'];
@@ -77,10 +83,15 @@ audiotest_path = [root filesep 'Projects/gopro kinematics/audio sync test'];
 if lens_calibration
 
 % Make sure this is intended
-button = questdlg(['The lens has been calibrated for 720 narrow -- ' ...
-      'Are you sure you wish to proceed?'],'','Yes','No','Cancel','Yes');  
-if ~strcmp(button,'Yes')
+button = questdlg(['Which configuration do you want to run -- ' ...
+      ''],'','720','1080','Cancel','1080');  
+  
+if strcmp(button,'Cancel')
     return
+elseif strcmp(button,'720')
+    check_path = check_path720;
+elseif strcmp(button,'1080')
+    check_path = check_path1080;
 end
 
 % Number of outlier frames to removed after initial calibration
@@ -236,7 +247,7 @@ if write_results
     save([results_path filesep 'image points.mat'],'imagePoints');
     save([results_path filesep 'board size.mat'],'boardSize');
     save([results_path filesep 'world points.mat'],'worldPoints');
-    save([results_path filesep 'square size.mat'],'lens_sqsize');
+    save([results_path filesep 'square size.mat'],'sqsize_lens');
     
     % Visualize pattern locations
     figure;
@@ -268,24 +279,25 @@ if threeD_calibration %isempty(dir([threeD_path filesep 'threeD calibration.mat'
 
 % Select calibration directory
 if nargin < 1
-    disp('Note: the calibration directory should hold 3 folders starting with "McHero4"')
+    disp('Note: the calibration directory should hold 1 or 3 folders starting with "McHero4"')
     threeD_path = uigetdir(video_path,'Select directory for running calibration');
+    if threeD_path==0
+        return
+    end
 end    
     
 % Check number of cameras
 num_cam = length(dir([threeD_path filesep 'McHero4*']));
 
-if (num_cam < 2) || (num_cam > 3)
-    error('There needs to be 2 or 3 cameras in your setup')
-end
+% Update status
+disp(['Running a calibration on ' num2str(num_cam) ' cameras'])
 
-% Load camera parameters for lens distortion ('cameraParams')
-load([check_path filesep 'calibration data' filesep 'camera parameters.mat'])
+a = dir([threeD_path filesep 'Mc*']);
 
 % Paths to 3D calibration videos
-cal_path{1} = [threeD_path filesep 'Mchero4_A'];    
-cal_path{2} = [threeD_path filesep 'Mchero4_B']; 
-cal_path{3} = [threeD_path filesep 'Mchero4_C']; 
+for i = 1:length(a)
+    cal_path{i} = [threeD_path filesep a(i).name];    
+end
 
 % Initialize for each cam
 for i = 1:num_cam   
@@ -308,6 +320,18 @@ for i = 1:num_cam
     fr_num{i} = round(linspace(nFrames{i}.*.1,nFrames{i}.*.8,numCalIm));
     
 end
+
+% Specify appropriate calibration for the requested movie resolution
+if vid_obj{1}.Height == 1080
+    check_path = check_path1080;
+elseif vid_obj{1}.Height == 720
+    check_path = check_path720;
+else
+    error('No calibration yet run for the resolution of this movie')
+end
+
+% Load camera parameters for lens distortion ('cameraParams')
+load([check_path filesep 'calibration data' filesep 'camera parameters.mat'])
 
 
 % STEP 1: GET ROI ---------------------------------------------------------
@@ -367,13 +391,65 @@ end
 
 % STEP 1: CREATE CALIBRATION IMAGES ---------------------------------------
 
-disp(' Creating calibration images . . .')
+
+% If frames already exist . . .
+if ~isempty(dir([cal_path{i} filesep 'frames']))
+    % Prompt for what to do
+    button = questdlg('Recreate frames to be analyzed?','!!','Yes',...
+        'No','Cancel','No');
+    
+    % Parse response
+    if strcmp(button,'Yes')
+        create_im = 1;
+        
+    elseif strcmp(button,'No')
+        create_im = 0;
+        
+    else
+        return
+    end
+    
+    clear button
+  
+% If no frames . . .
+else
+    create_im = 1;
+end
+
+% If creating images . . .
+if create_im
+    
+% Prompt for what to do
+button = questdlg('Do you wish to select a roi around checkerboard?',...
+    '?','Yes','No','Cancel','No');
+
+% Parse response
+if strcmp(button,'Yes')
+    select_roi = 1;
+    
+elseif strcmp(button,'No')
+    select_roi = 0;
+    
+else
+    return
+end
+
+clear button
+
 
 % Loop thru for each cam
 for i = 1:num_cam
 
     % Make directories
     [success,message,id] = mkdir(cal_path{i},'frames');
+    
+    % Load frame numbers('ana_num'), if defined 
+    if ~isempty(dir([threeD_path filesep 'frame numbers.mat']))
+        load([threeD_path filesep 'frame numbers.mat'])
+        disp('Using frames from frames.mat file . . .')
+         fr_num{i} = ana_num+1;
+         clear ana_num
+    end
     
     % Loop thru calibration images
     for j = 1:numCalIm
@@ -389,6 +465,27 @@ for i = 1:num_cam
         
         % Return image within roi
         unI = give_roi(unI,roi{i});
+        
+        % If roi is to be selected . . .
+        if select_roi
+            figure
+            warning off
+            imshow(unI)
+            warning on
+            
+            % Interactively find ellipse
+            title('Choose ROI points, close window to finish')
+            h = impoly; 
+            
+            roi_poly = wait(h);
+            close
+            
+            % Get roi coordinates, create binary mask
+            %roi_poly = getVertices(h);
+            
+            % Return image within roi
+            unI = give_roi(unI,roi_poly,'w');
+        end
         
         % Frame string
         fr_str = ['000000' num2str(fr_num{i}(j))];
@@ -408,6 +505,33 @@ for i = 1:num_cam
     disp(['          . . . done cam ' num2str(i) ' of ' num2str(num_cam)])
 end
 
+% Otherwise, create 'im_file'
+else
+    % Load frame numbers('ana_num'), if defined 
+    if ~isempty(dir([threeD_path filesep 'frame numbers.mat']))
+        load([threeD_path filesep 'frame numbers.mat'])
+         fr_num{i} = ana_num + 1;
+         clear ana_num
+    end
+    
+    % Loop thru for each cam
+    for i = 1:num_cam
+        % Loop thru calibration images
+        for j = 1:numCalIm   
+            % Frame string
+            fr_str = ['000000' num2str(fr_num{i}(j))];
+        
+            % Paths
+            im_path = [cal_path{i} filesep 'frames' filesep 'frame ' ...
+                fr_str(end-5:end) '.tif'];
+            
+            % Save paths
+            im_file{i}.path{j} = im_path;
+        end
+    end    
+    clear im_path i j
+end
+
 
 % STEP 3: RUN CALIBRATION -------------------------------------------------
 
@@ -424,12 +548,12 @@ for i = 1:num_cam
     im_file{i}.path = removed_unused(im_file{i}.path,imUsed);
   
     % Create checkerboard points
-    worldPoints = generateCheckerboardPoints(brdSize, sqsize);
+    worldPoints = generateCheckerboardPoints(brdSize, sqr_size);
     
     % Find camera parameters
     [cameraParam, imUsed, estErrors] = estimateCameraParameters(...
         imPts, worldPoints, ...
-        'EstimateSkew', false, ...
+        'EstimateSkew', true, ...
         'EstimateTangentialDistortion', true, ...
         'NumRadialDistortionCoefficients', 3, ...
         'WorldUnits', 'm');
@@ -438,7 +562,7 @@ for i = 1:num_cam
     im_file{i}.path = removed_unused(im_file{i}.path,imUsed);
     
     % Translate detected points back into the original image coordinates
-    refPts = bsxfun(@plus, imPts, mean(newOrigin{i},2));
+    %refPts = bsxfun(@plus, imPts, mean(newOrigin{i}(imUsed),2));
     
     % Calcualte mean extrinsic propterties of cameras
     [R, t] = calc_extrinsics(imPts, worldPoints, imUsed, cameraParam);
@@ -468,17 +592,26 @@ end
 
 
 
-function  im = give_roi(im,roi)
+function  im = give_roi(im,roi,field_clr)
 % Return image in roi, with adjusted contrast
+
+if nargin < 3
+    field_clr = 'k';
+end
 
 % Define mask
 BW = poly2mask(roi(:,1),roi(:,2),size(im,1),size(im,2)); 
 
 % Update image, for verification
-im(~BW) = 0;
+if strcmp(field_clr,'k')
+    im(~BW) = 0;
+else
+    im(~BW) = 255;
+end
 
 % Adjust contrast
 im = imadjust(im);
+
 
 
 function varargout = get_videofiles(dir_path)
@@ -563,7 +696,7 @@ title('Single camera calibration')
 
 % Capture graphs
 I = getframe(gcf);
-close
+%close
 
 % Write frame
 imwrite(I.cdata,[results_path filesep 'calibration graph.jpeg'],'JPEG');
