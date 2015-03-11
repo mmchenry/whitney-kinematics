@@ -18,6 +18,9 @@ lens_calibration = 0;
 threeD_calibration = 1;
 
 
+maxImages = 10;
+
+
 %% Parameter values
 
 % Number of calibration images
@@ -507,26 +510,38 @@ end
 
 % Otherwise, create 'im_file'
 else
-    % Load frame numbers('ana_num'), if defined 
-    if ~isempty(dir([threeD_path filesep 'frame numbers.mat']))
-        load([threeD_path filesep 'frame numbers.mat'])
-         fr_num{i} = ana_num + 1;
-         clear ana_num
-    end
+%     % Load frame numbers('ana_num'), if defined 
+%     if ~isempty(dir([threeD_path filesep 'frame numbers.mat']))
+%         load([threeD_path filesep 'frame numbers.mat'])
+%          fr_num{i} = ana_num + 1;
+%          clear ana_num
+%     end
     
     % Loop thru for each cam
     for i = 1:num_cam
-        % Loop thru calibration images
-        for j = 1:numCalIm   
-            % Frame string
-            fr_str = ['000000' num2str(fr_num{i}(j))];
         
-            % Paths
-            im_path = [cal_path{i} filesep 'frames' filesep 'frame ' ...
-                fr_str(end-5:end) '.tif'];
+        % Survey existing frames (allows manual deleting)
+        a = dir([cal_path{i} filesep 'frames' filesep 'frame*']);
+        
+        % Check contents
+        if isempty(a)
+            error(['You need to create calibration frames in '...
+                    cal_path{i} filesep 'frames'])
+        end
+        
+        % Loop thru calibration images
+        for j = 1:length(a)   
+%             % Frame string
+%             fr_str = ['000000' num2str(fr_num{i}(j))];
+%         
+%             % Paths
+%             im_path = [cal_path{i} filesep 'frames' filesep 'frame ' ...
+%                 fr_str(end-5:end) '.tif'];
             
             % Save paths
-            im_file{i}.path{j} = im_path;
+            %im_file{i}.path{j} = im_path;
+            im_file{i}.path{j} = [cal_path{i} filesep 'frames' filesep ...
+                                  a(j).name];
         end
     end    
     clear im_path i j
@@ -545,7 +560,7 @@ for i = 1:num_cam
     [imPts,brdSize,imUsed] = detectCheckerboardPoints(im_file{i}.path);
     
     % Remove unused images
-    im_file{i}.path = removed_unused(im_file{i}.path,imUsed);
+    [im_file{i}.path,imUsed] = removed_unused(im_file{i}.path,imUsed,maxImages);
   
     % Create checkerboard points
     worldPoints = generateCheckerboardPoints(brdSize, sqr_size);
@@ -559,7 +574,7 @@ for i = 1:num_cam
         'WorldUnits', 'm');
 
     % Remove unused images
-    im_file{i}.path = removed_unused(im_file{i}.path,imUsed);
+    [im_file{i}.path,imUsed] = removed_unused(im_file{i}.path,imUsed,maxImages);
     
     % Translate detected points back into the original image coordinates
     %refPts = bsxfun(@plus, imPts, mean(newOrigin{i}(imUsed),2));
@@ -579,7 +594,23 @@ for i = 1:num_cam
     cal{i}.t             = t;
     cal{i}.camMatrix     = camMatrix;
     cal{i}.imPts         = imPts;
-
+    
+    % Test calibration
+    im1 = imread(im_file{i}.path{1});
+    [im, newOrigin] = undistortImage(im1, cameraParam);
+    
+    if sum(im(:))==0
+        error('Calibration failed.  Try deleting some of the calibration frames');
+    end
+    
+    figure;
+    subplot(1,2,1)
+    imshow(im1)
+    subplot(1,2,2)
+    imshow(im)
+    
+    clear newOrigin im im1 
+    
     % Update status
     disp(['          . . . done cam ' num2str(i) ' of ' num2str(num_cam)])
 end
@@ -720,12 +751,13 @@ R = mean(Rs, 3);
 t = mean(ts,1);
 
 
-function files = removed_unused(files,imagesUsed)
+function [files,imUsed] = removed_unused(files,imagesUsed,maxImages)
 % Removes unused images from cell array
 
 k = 1;
 for j = 1:length(imagesUsed)
-    if imagesUsed(j)
+    if imagesUsed(j) && k<=maxImages
+        imUsed(j) = imagesUsed(j);
         tmp{k} = files{j};
         k = k + 1;
     end

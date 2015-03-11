@@ -6,10 +6,6 @@ function go_kinematics(video_path)
 
 %% Code execution
 
-% Copy over sets of video files into directories
-organize_files = 1;
-
-view_video
 
 % Determines the camera parameters (i.e. lens correction) for single HERO4 
 % in 720 'narrow' mode
@@ -46,100 +42,70 @@ max_frames = 5;
 % Find root on Matt's computer
 if ~isempty(dir('/Users/mmchenry'))    
     % Directory root
-    root = '/Users/mmchenry/Dropbox/Projects/JimmyJacob'; 
+    root_data   = '/Users/mmchenry/Dropbox/Projects/JimmyJacob'; 
+    root_check  = '/Users/mmchenry/Documents/Projects/gopro kinematics';
+    root_video  = '/Volumes/WD MACPART/Video/Liao pred-prey/organized files';
 else
     error('This computer is not recognized')
 end
 
 % Checkboard video file for single camera calibration (Lens correction, 720 Narrow)
-check_path720 = [root filesep '/Projects/gopro kinematics/Lens correction, 720 Narrow/Mchero4_A'];
+check_path720 = [root_check filesep '/Lens correction, 720 Narrow/Mchero4_A'];
 
 % Checkboard video file for single camera calibration (Lens correction, 1080 Narrow)
-check_path1080 = [root filesep '/Projects/gopro kinematics/Lens correction, 1080 Narrow/Mchero4_A'];
-
-% Path to video recordings
-video_root = '/Volumes/WD MACPART/Video/Liao pred-prey/organized files';
+check_path1080 = [root_check filesep '/Lens correction, 1080 Narrow/Mchero4_A'];
 
 % Check for external drive
-if isempty(dir(video_root))
+if isempty(dir(root_video))
     error('If does not look like your external drive is plugged in');
 end
 
 % Get sequence path
 if nargin < 1
-    video_path = uigetdir(video_root,'Choose sequence directory');
+    video_path = uigetdir(root_video,'Choose sequence directory');
 end
 
+% Check path
+if ~strcmp(root_video,video_path(1:length(root_video)))
+    error('Video files must be on root_video path')
+end
+
+% Create date and sequence paths in data directory
+tmp   = video_path(length(root_video)+2:end);
+idx   = find(tmp==filesep,1,'first');
+date_path = tmp(1:(idx-1));
+seq_path  = tmp((idx+1):end);
+data_path = [root_data filesep 'rawdata' filesep date_path filesep seq_path];
+clear tmp idx
+
+% Make date directory, if needed
+if isempty(dir([root_data filesep 'rawdata' filesep date_path]))
+    [success,message,messageid] = mkdir([root_data filesep 'rawdata' ...
+                                         filesep date_path]);
+    clear success message messageid
+end
+
+% Make sequence directory, if needed
+if isempty(dir(data_path))
+    [success,message,messageid] = mkdir(data_path);
+    clear success message messageid
+end
+
+
+%% Video player
+
+
+
+
+
+ttt=4
+    
 % Path to calibration data
-cal_path = [root filesep 'Projects/gopro kinematics/3d pred prey trial/calibration2'];
+%cal_path = [root_data filesep 'Projects/gopro kinematics/3d pred prey trial/calibration2'];
 
-%
-data_path = [root filesep 'rawdata'];
+%p
+%data_path = [root filesep 'rawdata'];
 
-
-%% Organize files
-if organize_files
-   
-    % Check for video directories 
-    if isempty([video_path filesep 'expt_raw']) || ...
-       isempty([video_path filesep 'expt_raw' filesep 'McHero4*'])     
-        error(['You need to store video directories in a directory called "expt_raw"'])      
-    end
-    
-    % Inventory video files
-    aA = dir([video_path filesep 'expt_raw' filesep 'McHero4_A' filesep '*.MP4']);
-    aB = dir([video_path filesep 'expt_raw' filesep 'McHero4_B' filesep '*.MP4']);
-    aC = dir([video_path filesep 'expt_raw' filesep 'McHero4_C' filesep '*.MP4']);
-    
-    % Check for equal number of files
-    if (length(aA)~=length(aB)) || (length(aA)~=length(aC))
-        error('You need to have an equal number of files in each video directory')
-    end
-    
-    if isempty(aA)
-        error('No video files')
-    end
-    
-    % Make directories, copy files
-    
-    for i = 1:length(aA)
-        % Current experiment directory name
-        exp_num = ['00' num2str(i)];
-        dir_name = ['expt' exp_num(end-2:end)];
-        
-        % Make directories
-        if isempty(dir([video_path filesep dir_name filesep 'McHero4_A']))
-            mkdir([video_path filesep dir_name], 'McHero4_A');
-        end
-        
-        if isempty(dir([video_path filesep dir_name filesep 'McHero4_B']))
-            mkdir([video_path filesep dir_name], 'McHero4_B')
-        end
-        
-        if isempty(dir([video_path filesep dir_name filesep 'McHero4_C']))
-            mkdir([video_path filesep dir_name], 'McHero4_C')
-        end
-        
-        % Copy over video files
-        if isempty(dir([video_path filesep dir_name filesep 'McHero4_A' filesep aA(i).name]))
-            copyfile([video_path filesep 'expt_raw' filesep 'McHero4_A' filesep aA(i).name], ...
-                     [video_path filesep dir_name filesep 'McHero4_A' filesep aA(i).name]);
-        end
-            
-        if isempty(dir([video_path filesep dir_name filesep 'McHero4_B' filesep aB(i).name]))
-            copyfile([video_path filesep 'expt_raw' filesep 'McHero4_B' filesep aB(i).name], ...
-                     [video_path filesep dir_name filesep 'McHero4_B' filesep aB(i).name]);
-        end
-            
-        if isempty(dir([video_path filesep dir_name filesep 'McHero4_C' filesep aC(i).name]))
-            copyfile([video_path filesep 'expt_raw' filesep 'McHero4_C' filesep aC(i).name], ...
-                     [video_path filesep dir_name filesep 'McHero4_C' filesep aC(i).name]);
-        end
-        
-        % Report status
-        disp(['Done ' num2str(i) ' of ' num2str(length(aA))])
-    end
-end
 
 
 
@@ -147,7 +113,7 @@ end
 %% Load data
 
 % Load camera parameters for lens distortion ('cameraParams')
-load([check_path filesep 'calibration data' filesep 'camera parameters.mat'])
+load([check_path1080 filesep 'calibration data' filesep 'camera parameters.mat'])
 
 lensParams = cameraParams;
 clear cameraParams
@@ -157,6 +123,12 @@ clear cameraParams
 
 % Load roi data ('roi')
 %load([cal_path filesep 'roi data.mat'])
+
+
+%TODO: Organize 
+
+
+
 
 
 %% Save modified movie
@@ -171,7 +143,7 @@ if (num_cam ~= 3) || (length(cal)~=num_cam)
     error('There needs to be 3 cameras in your setup')
 end
 
-% Paths to 3D calibration videos
+% Paths to videos
 vid_path{1} = [video_path filesep 'McHero4_A'];
 vid_path{2} = [video_path filesep 'McHero4_B'];
 vid_path{3} = [video_path filesep 'McHero4_C'];
