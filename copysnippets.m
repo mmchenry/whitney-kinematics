@@ -1,15 +1,30 @@
-function copysnippets(raw_path,cams,time_start,time_end)
+function copysnippets(action,raw_path,cams,time_start,time_end)
 % Transfers snippets of video from organized raw files for analysis
 
 
 
 %% Code execution
 
-% Creates a batch of sequences for creating snippets 
-set_batch = 0;
+if strcmp(action,'cue job')
 
-% Runs the batch
-run_batch = 1;
+    % Creates a batch of sequences for creating snippets
+    set_batch = 1;    
+    % Runs the batch
+    run_batch = 0;
+    
+elseif strcmp(action,'run batch')
+    
+    % Creates a batch of sequences for creating snippets
+    set_batch = 0;   
+    % Runs the batch
+    run_batch = 1;
+    
+else
+    error('action not recognized');
+end
+
+% Save video as image sequence
+save_as_seq = 1;
 
 
 %% Set up batch (set_batch)
@@ -22,6 +37,7 @@ if set_batch
     % Get experiment path
     if nargin < 1
         % Get raw path
+        %raw_path = root.rawvid;
         raw_path = uigetdir(root.rawvid,'Choose "exptXXX" directory');
         
         % Parse response
@@ -99,7 +115,7 @@ if set_batch
     snip_path = [root.snip filesep v{i}.date_dir filesep v{i}.seq_dir];
     data_path = [root.proj filesep 'rawdata' filesep v{i}.date_dir filesep v{i}.seq_dir];
     
-    % Get snippet path
+    % Get snippet file info
     a = dir([snip_path filesep 'Snip*']);
     
     % Number of existing snippets
@@ -158,11 +174,23 @@ if set_batch
         v{i}.snip_num  = snip_num; 
     end
      
-    % Make snip video directory
-    mkdir([snip_path filesep snip_name])
+    % Make path for snippets
+    if save_as_seq
+        im_path = [snip_path filesep v{i}.snip_name filesep v{i}.cam_dir];
+        if isempty(dir(im_path))
+            mkdir(im_path);
+        end
+        clear im_path
+        
+    elseif isempty(dir([snip_path filesep snip_name]))
+        % Make snip video directory
+        mkdir([snip_path filesep snip_name])       
+    end
     
     % Make data directory
-    mkdir([data_path filesep snip_name])
+    if isempty(dir([data_path filesep snip_name]))
+        mkdir([data_path filesep snip_name])
+    end
     
     % Define batch name
     batch_name = [v{i}.date_dir '_' v{i}.seq_dir '_' snip_name];
@@ -239,16 +267,19 @@ if run_batch
             % Define frame numbers
             v{i}.frames = floor(v{i}.time_start*v{i}.framerate):ceil(v{i}.time_end*v{i}.framerate);
             
-            % Create snippet object
+            % Snippet path
             snip_path = [root.snip filesep v{i}.date_dir filesep v{i}.seq_dir];
-            snipObj = VideoWriter([snip_path filesep v{i}.snip_name filesep ...
-                v{i}.cam_dir], 'MPEG-4');
-            snipObj.FrameRate = readObj.FrameRate;
-             
             
-            % Open object (for writing)
-            open(snipObj);
-              
+            if ~save_as_seq
+                % Create snippet object
+                snipObj = VideoWriter([snip_path filesep v{i}.snip_name filesep ...
+                    v{i}.cam_dir], 'MPEG-4');
+                snipObj.FrameRate = readObj.FrameRate;              
+                
+                % Open object (for writing)
+                open(snipObj)
+            end
+            
             % Loop thru frames
             for j = 1:length(v{i}.frames)
                 
@@ -274,8 +305,20 @@ if run_batch
                     error('The undistortion made a black image')
                 end
                 
-                writeVideo(snipObj,im);
+                % Path to images
+                im_path = [snip_path filesep v{i}.snip_name filesep v{i}.cam_dir];
                 
+                if save_as_seq
+                    tmp = ['0000000' num2str(v{i}.frames(j))];
+                    tmp = tmp(end-6:end);
+                    im_name = ['frame_' tmp '.jpeg'];
+                    
+                    imwrite(im,[im_path filesep im_name],'JPEG',...
+                        'Quality',65,'BitDepth',8);
+                    clear tmp
+                else
+                    writeVideo(snipObj,im);
+                end
                 
                 clear im newOrigin
                 
@@ -284,14 +327,22 @@ if run_batch
                       ' of ' num2str(length(v)*length(v{i}.frames))])
             end
             
-            % Close the video file written
-            close(snipObj)
+            if ~save_as_seq
+                % Close the video file written
+                close(snipObj)
+            end
             
-            % Define paths for snippets and corresponding data
-            data_path = [root.proj filesep 'rawdata' filesep v{i}.date_dir ...
-                         filesep v{i}.seq_dir filesep v{i}.snip_name];
-            save([data_path filesep v{i}.cam_dir],'v')
+            % Clean up old data file
+            if ~isempty(dir([root.proj filesep 'rawdata' filesep v{i}.date_dir ...
+                    filesep v{i}.seq_dir filesep v{i}.snip_name filesep v{i}.cam_dir '.mat']))
+                delete([root.proj filesep 'rawdata' filesep v{i}.date_dir ...
+                    filesep v{i}.seq_dir filesep v{i}.snip_name filesep v{i}.cam_dir '.mat']);
+            end   
         end
+        
+        % Define paths for snippets and corresponding data
+        save([root.proj filesep 'rawdata' filesep v{i}.date_dir ...
+              filesep v{i}.seq_dir filesep 'video_data.mat'],'v')
 
         % Remove job file
         delete([root.proj filesep 'Batches' filesep 'Snippets' ...

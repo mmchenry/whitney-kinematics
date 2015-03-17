@@ -1,4 +1,4 @@
-function aud = audio_sync(video_path, skip_dur, read_dur)
+function aud = audio_sync(video_path)
 % Save or load structure for syncing 3 video files from audio channels
 
 %% Code execution
@@ -12,16 +12,8 @@ select_event = 1;
 
 %% Parameters
 
-if nargin < 3  
-    
-    % Total duration to consider (s)
-    read_dur = 5;  
-
-    if nargin < 2        
-        % Duration at start of audio signal to skip
-        skip_dur = 0.5;
-    end
-end
+% Interval for evaluating max intensity
+dur_eval = 0.5;
 
 % Duration of audio for visualizing the correction
 %audio_dur = read_dur ;
@@ -29,179 +21,223 @@ end
 
 %% Paths
 
-% Look for video directories
-a = dir([video_path filesep 'McHero4*']);
 
-% Store each
-for i = 1:length(a)
-    % Paths to videos
-    aud{i}.path = [video_path filesep a(i).name];
+% Get root paths
+root = give_paths;
+
+% Get date directories
+aDates = dir([root.rawvid filesep '2015-*']);
+
+if isempty(aDates)
+    error('Choose new root path')
 end
 
-% Check for number of cameras
-if length(a)~=3
-    error('Expecting 3 cameras, 3 not given')
-end
 
-%% Prompt to overwrite
+%% Create structure of directories
 
-% Ask for rerunning sync analysis
-if ~isempty(dir([video_path filesep 'delayinfo.mat']))
-    button = questdlg('Do you want to re-run the audio sync?','','Yes',...
-        'No','Cancel', 'Yes');
-    if strcmp(button, 'Yes')
-        do_sync = 1;
-    elseif strcmp(button,'No')
-        do_sync = 0;   
-    else
-        return
+% Index 
+k = 1;
+
+% Loop thru dates
+for i = 1:length(aDates)
+    
+    % Get experiment directories
+    aExpts = dir([root.rawvid filesep aDates(i).name filesep 'expt*']);
+    
+    % Loop thru experiments
+    for j = 1:length(aExpts)
+        
+        % Current data directory
+        cDir = [root.proj filesep 'rawdata' filesep aDates(i).name filesep ...
+                        aExpts(j).name];
+                    
+        % Current video directory
+        vDir = [root.rawvid filesep aDates(i).name filesep aExpts(j).name];
+                    
+        % Make data directory
+        if isempty(dir(cDir))
+            mkdir(cDir);
+            disp(['Making ' cDir]);
+        end
+
+        % Look for video directories
+        aCams = dir([vDir filesep 'McHero4*']);
+        
+        % Don't store when there are fewer than 3 cams
+        if length(aCams)~=3
+            warning(['This expt has ' num2str(length(aCams)) ' cams:' cDir]);
+            
+        % Otherwise . . .
+        else
+            
+            % Store directories
+            audio{k}.date_dir = aDates(i).name;
+            audio{k}.seq_dir  = aExpts(j).name;
+            
+            % Loop thru cams
+            for L = 1:length(aCams)
+                % Look for video directories
+                aVid = dir([vDir filesep aCams(L).name filesep '*.MP4']);
+                
+                % Check number of videos
+                if length(aVid)~=1
+                    error('Expecting 1 video file');
+                end
+                
+                % Store video file name
+                audio{k}.vid_file{L} = [aCams(L).name filesep aVid.name];
+            end
+            
+            % Advance index
+            k = k + 1;
+        end
     end
-    
-else
-    do_sync = 1;
 end
 
-
-%% Read audio tracks
-
-
-for i = 1:3
-    % Get video file path
-    a = dir([aud{i}.path filesep '*.MP4']);
-    
-    % Get audioinfo
-    aInfo = audioinfo([aud{i}.path filesep a(1).name]);
-    
-    % Extract audio
-    [tmp,aud{i}.Fs] = audioread(aInfo.Filename);
-    
-    % Choose channel with greater signal
-    if mean(abs(tmp(:,1))) > mean(abs(tmp(:,2)))
-        y = tmp(:,1);
-    else
-        y = tmp(:,2);
-    end
-    
-    % Time value
-    t = [0:(length(y)-1)]'./aud{i}.Fs;
-    
-    % Store values to be used
-    aud{i}.t = t;
-    aud{i}.y = y;
-end
+clear i j k L
 
 
-%% Prompt to select duration
+%% Find interval with max signal
 
-if select_event
-    
-    idx = 1:round(length(aud{1}.t)/4);
-    figure
-    plot(aud{1}.t(idx), aud{1}.y(idx), '-', ...
-         aud{2}.t(idx), aud{2}.y(idx), '-', ...
-         aud{3}.t(idx), aud{3}.y(idx), '-');
-    hold on
-    title('Select duration')
-    
-    [t1,tmp1] = ginput(1);
-    h2 = plot(t1,tmp1,'k+');
-    
-    [t2,tmp2] = ginput(1);
-    delete(h2)
-    plot([t1 t2 t2 t1 t1],[tmp1 tmp1 tmp2 tmp2 tmp1],'k-')
-    pause(0.5)
-    close
-    
-    skip_dur = min([t1 t2]);
-    read_dur = max([t1 t2]) - skip_dur;
-end
-
-%% Run sync
-
-% Create 'aud' structure, if delayinfo.mat file does not exist
-if do_sync
-    
-    % Loop thru cameras
-    for i = 1:3
-       
-        % Values to include
-        idx = (aud{i}.t > skip_dur) & (aud{i}.t < (read_dur+skip_dur));
+% Loop thru experiments
+for i = 21:length(audio)
+   
+    % Current data directory
+    cDir = [root.proj filesep 'rawdata' filesep audio{i}.date_dir filesep ...
+                        audio{i}.seq_dir];
+                    
+    % Current video directory
+    vDir = [root.rawvid filesep audio{i}.date_dir filesep audio{i}.seq_dir];
+                                    
+    % Loop thru cams & extract video
+    for j = 1:length(audio{i}.vid_file)
+        
+        % Get audioinfo
+        aInfo = audioinfo([vDir filesep audio{i}.vid_file{j}]);
+        
+        % Extract audio
+        [tmp,Fs] = audioread(aInfo.Filename);
+        
+        % Choose channel with greater signal
+        if mean(abs(tmp(:,1))) > mean(abs(tmp(:,2)))
+            y = tmp(:,1);
+        else
+            y = tmp(:,2);
+        end
+        
+        % Time value
+        t = [0:(length(y)-1)]'./Fs;
         
         % Store values to be used
-        aud{i}.t = aud{i}.t(idx);
-        aud{i}.y = aud{i}.y(idx);
+        cam{j}.t  = t;
+        cam{j}.y  = y;
+        cam{j}.Fs = Fs;
         
-        % Create audio player (for troubleshooting)
-        aud{i}.player = audioplayer(aud{i}.y,aud{i}.Fs);
-        
-        clear y t idx
+        clear a tmp t
     end
     
-    clear tmp
+    % Index of values
+    idx = 1:min([length(cam{1}.t) length(cam{2}.t) length(cam{3}.t)]); 
     
-    % Check that sample rate is uniform
-    if (aud{1}.Fs~=aud{2}.Fs) || (aud{1}.Fs~=aud{3}.Fs)
-        error('Videos vary in their sample rate');
+    % Audio matrix
+    y = [cam{1}.y(idx) cam{2}.y(idx) cam{3}.y(idx)];
+    
+    % Time matrix
+    if (cam{1}.Fs==cam{2}.Fs) && (cam{1}.Fs==cam{3}.Fs) 
+        t = cam{1}.t(idx);
+        Fs = cam{1}.Fs;
+    else
+        error('Unequal sample rates');
     end
+ 
+    clear cam
     
-    % Check signal 1
-    if range(aud{1}.y) < mean([range(aud{2}.y) range(aud{3}.y)])/2
-        prompt_play(aud{1},num2str(1));
-    end
-    
-    % Check signal 2
-    if range(aud{2}.y) < mean([range(aud{1}.y) range(aud{3}.y)])/2
-        prompt_play(aud{2},num2str(2));
-    end
-    
-    % Check signal 3
-    if range(aud{3}.y) < mean([range(aud{1}.y) range(aud{2}.y)])/2
-        prompt_play(aud{3},num2str(3));
-    end
-    
-    % Find delays wrt camera A
-    aud{1}.delay = 0;
-    aud{2}.delay = finddelay(aud{1}.y,aud{2}.y)./aud{1}.Fs;
-    aud{3}.delay = finddelay(aud{1}.y,aud{3}.y)./aud{1}.Fs;
-    
-    % Plot data to check delay
-    if plot_data     
-        % Plot
-        figure;
-        subplot(2,1,1)
-        h = plot(aud{1}.t,aud{1}.y,'-',...
-                 aud{2}.t,aud{2}.y,'-',...
-                 aud{3}.t,aud{3}.y,'-');
-        xlabel('Time (s)')
-        ylabel('Audio track (V)')
-        title('Before correction')
-        grid on
+    % Loop thru intervals to find mean values
+    for j = 1:floor(max(t(:))/dur_eval)
+               
+        % Index of interval values
+        idx = (t>=(dur_eval*(j-1))) & (t<(dur_eval*j));
         
-       % xlim([skip_dur skip_dur+audio_dur])
+        % Mean product of three cameras over interval
+        yMean(j,1) = mean(abs(y(idx,1)).*abs(y(idx,2)).*abs(y(idx,3)));
         
-        subplot(2,1,2)
-        plot(aud{1}.t-aud{1}.delay,aud{1}.y,'-',...
-             aud{2}.t-aud{2}.delay,aud{2}.y,'-',...
-             aud{3}.t-aud{3}.delay,aud{3}.y,'-')
-        xlabel('Time (s)')
-        ylabel('Audio track (V)')
-        title('After correction')
-        grid on
-        
-        %xlim([skip_dur skip_dur+audio_dur])
-        
-        %xlim([0 .5])
+        % Mean time value
+        tMean(j,1) = mean(t(idx));
     end
+    
+    % Time index
+    iTime = find(yMean==max(yMean),1,'first');
+    
+    % Start time 
+    t_start = tMean(iTime) - 1.5*dur_eval;
+    
+    % End time
+    t_end = tMean(iTime) + 1.5*dur_eval;
+    
+    % Index of values to interrogate
+    idx = (t>=t_start) & (t<t_end);
+    
+    % Trim to duration to be considered
+    y = y(idx,:);
+    t = t(idx,:);
+    
+    % Find delays wrt first camera
+    delay(1,1) = 0;
+    delay(2,1) = finddelay(y(:,1),y(:,2))./Fs;
+    delay(3,1) = finddelay(y(:,1),y(:,3))./Fs;
+  
+    % Store data
+    aud.date_dir    = audio{i}.date_dir;
+    aud.seq_dir     = audio{i}.seq_dir;
+    aud.vid_file    = audio{i}.vid_file;
+    aud.delay       = delay;
+        
+    % Write data
+    save([cDir filesep 'audio_data'],'aud');
+    
+    if 0
+        % Play audio (for troubleshooting)
+        aud_player = audioplayer(y(:,1),Fs);
+        play(aud_player)
+    end
+    
+    % VISUALIZE RESULTS ---------------------------------------------------
 
-    % Save delay data
-    save([video_path filesep 'delayinfo.mat'],'aud')
-   
+    figure;
+%     subplot(3,1,1)
+%     plot(tMean,yMean);
+%     xlabel('t (s)')
+%     ylabel('Mean audio (V)');
     
-% Alternatively, load 'aud' structure
-else
-    disp('Loading audio delay data . . .')
-    load([video_path filesep 'delayinfo.mat'])
+    subplot(2,1,1)
+    plot(t,y);
+    xlabel('t (s)')
+    ylabel('Audio product (V^3)');
+    
+    subplot(2,1,2)
+    plot(t-delay(1),y(:,1),'-',...
+         t-delay(2),y(:,2),'-',...
+         t-delay(3),y(:,3),'-');
+    xlabel('t (s)')
+    ylabel('Audio (V)');
+    
+    pause(0.1)
+    
+     % Capture graphs
+    I = getframe(gcf);
+    close
+    
+    % Write frame
+    imwrite(I.cdata,[cDir filesep 'Audio sync.jpeg'],'JPEG');
+    close
+    
+    % Update status
+    disp(['Completed ' num2str(i) ' of ' num2str(length(audio))])
+    
+    clear aud y t idx delay tMean yMean
 end
+
+
 
 
 function prompt_play(aud,ch_num)
