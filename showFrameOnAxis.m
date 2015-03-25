@@ -19,6 +19,10 @@ catch %#ok<CTCH>
 end
     
 isFirstTime = isempty(hChild);
+
+
+%hIm = displayImage(hAxis, frame);
+
 if isFirstTime
     hIm = displayImage(hAxis, frame);
     if includeScroll

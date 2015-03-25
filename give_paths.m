@@ -15,7 +15,7 @@ function root = give_paths
 % Find root on Matt's computer
 if ~isempty(dir([filesep 'Users' filesep 'mmchenry']))    
     % Directory root for snippets
-    root.snip       = '/Users/mmchenry/Documents/Video/JimmyJacob'; 
+    root.snip       = '/Users/mmchenry/Dropbox/Projects/JimmyJacob/Snippets'; 
     
     % Directory root for raw video
     root.rawvid     = '/Volumes/WD MACPART/Video/Liao pred-prey/organized files';

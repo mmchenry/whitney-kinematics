@@ -121,16 +121,16 @@ if set_batch
     % Number of existing snippets
     snip_num = length(a);    
     
-    % Delete snippet dir and data dir, if it has no video
-    % (will be recreated below)
-    if (snip_num>0) && isempty(dir([snip_path filesep a(end).name filesep '*.mp4']))
-        rmdir([snip_path filesep a(end).name])
-        if isdir([data_path filesep a(end).name])
-            delete([snip_path filesep a(snip_num).name filesep '*.mat'])
-            rmdir([data_path filesep a(end).name])
-        end
-        snip_num = snip_num-1;
-    end
+%     % Delete snippet dir and data dir, if it has no video
+%     % (will be recreated below)
+%     if (snip_num>0) && isempty(dir([snip_path filesep a(end).name filesep '*.mp4']))
+%         rmdir([snip_path filesep a(end).name])
+%         if isdir([data_path filesep a(end).name])
+%             delete([snip_path filesep a(snip_num).name filesep '*.mat'])
+%             rmdir([data_path filesep a(end).name])
+%         end
+%         snip_num = snip_num-1;
+%     end
     
     % If no existing
     if snip_num==0
@@ -312,6 +312,10 @@ if run_batch
                     tmp = ['0000000' num2str(v{i}.frames(j))];
                     tmp = tmp(end-6:end);
                     im_name = ['frame_' tmp '.jpeg'];
+                    
+                    if isempty(dir(im_path))
+                        mkdir(im_path);
+                    end
                     
                     imwrite(im,[im_path filesep im_name],'JPEG',...
                         'Quality',65,'BitDepth',8);

@@ -42,11 +42,11 @@ data_path = [root.proj filesep 'rawdata' filesep date_dir filesep ...
              seq_dir];       
 
 % Check for data data
-if isempty(dir([data_path filesep 'video_data.mp4']))
+if isempty(dir([data_path filesep 'video_data.mat']))
     error(['No data files in ' data_path]); 
 else
     % Load 'v' structure
-    load([data_path filesep 'video_data.mp4']);
+    load([data_path filesep 'video_data.mat']);
 end
 
 %TODO:Check for audio data
@@ -65,8 +65,12 @@ cCam = 1;
 
 
 
+im_path = [root.snip filesep date_dir filesep seq_dir filesep snip_dir ...
+           filesep v{cCam}.cam_dir];
 
+videoAcqGUI(im_path, data_path, v, cCam);
 
+return
 
 
 
