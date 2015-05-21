@@ -51,99 +51,23 @@ end
 
 %TODO:Check for audio data
 
-
 clear tmp
 
 
-%% Display video
-
-% Current frame in snippet
-cFrame = 1;
+%% Launch analysis GUI
 
 % Current cam 
 cCam = 1;
 
-
-
+% Path to video
 im_path = [root.snip filesep date_dir filesep seq_dir filesep snip_dir ...
            filesep v{cCam}.cam_dir];
 
+% Start GUI
 videoAcqGUI(im_path, data_path, v, cCam);
 
-return
 
 
-
-% % Create System objects for foreground detection and blob analysis
-% 
-% % The foreground detector is used to segment moving objects from
-% % the background. It outputs a binary mask, where the pixel value
-% % of 1 corresponds to the foreground and the value of 0 corresponds
-% % to the background.
-% 
-% obj.detector = vision.ForegroundDetector('NumGaussians', 3, ...
-%     'NumTrainingFrames', 40, 'MinimumBackgroundRatio', 0.7);
-% 
-% % Connected groups of foreground pixels are likely to correspond to moving
-% % objects.  The blob analysis System object is used to find such groups
-% % (called 'blobs' or 'connected components'), and compute their
-% % characteristics, such as area, centroid, and the bounding box.
-% 
-% obj.blobAnalyser = vision.BlobAnalysis('BoundingBoxOutputPort', true, ...
-%     'AreaOutputPort', true, 'CentroidOutputPort', true, ...
-%     'MinimumBlobArea', 400);
-% 
-
-for i = 1:length(v)
-    vid_file{i} = [root.snip filesep v{i}.date_dir filesep ...
-                v{i}.seq_dir filesep v{i}.snip_name filesep ...
-                v{i}.cam_dir '.mp4'];
-     readObj{i} = VideoReader(vid_file{i});   
-end
-
-VideoInCustomGUI(vid_file{1})
-
-return
-
-multiObjectTracking(vid_file{1},cFrame)
-
-figure('DoubleBuffer','on')
-
-while true
-    
-    tic
-    
-    % Read frame
-    im = read(readObj{cCam},cFrame);
-    
-    warning off
-    imshow(im)
-    title([v{cCam} ': Frame ' num2str(cFrame)])
-    warning on
-    
-    pause(0.1)
-    
-    cFrame = min([length(v{cCam}.frames) (cFrame + 1)]);
-    
-    toc
-end
-
-
-    function tracks = initializeTracks()
-        % create an empty array of tracks
-        tracks = struct(...
-            'id', {}, ...
-            'bbox', {}, ...
-            'kalmanFilter', {}, ...
-            'age', {}, ...
-            'totalVisibleCount', {}, ...
-            'consecutiveInvisibleCount', {});
-    end
-
-
-
-
-end
 
 
 

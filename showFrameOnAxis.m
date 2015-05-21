@@ -10,8 +10,6 @@ function showFrameOnAxis(hAxis, frame, includeScroll)
 %checkFrame(frame);
 frame = convertToUint8RGB(frame);
 
-
-
 try
   hChild = get(hAxis, 'Children');
 catch %#ok<CTCH>

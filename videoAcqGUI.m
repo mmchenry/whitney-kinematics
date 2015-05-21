@@ -1,5 +1,12 @@
-function VideoInCustomGUI(im_dir, data_dir, v, cCam)
+function VideoAcqGUI(im_dir, data_dir, v, cCam)
+% GUI for acquiring kinematics manually
 
+
+%% Parameter values
+
+% Width of video frame display (pix)
+% Adjust this to the size of your monitor
+vidWidth = 450;
 
 %% Info text
 
@@ -11,9 +18,14 @@ disp('   Right arrow:  play video forwards');
 disp('   Up arrow:     Step forward 1 frame');
 disp('   Down arrow:   Step backward one frame');
 disp('   1 - 9:        Jump to different location in video');
+disp('   =:            Zoom in region of interest');
+disp('   -:            Zoom out region of interest');
 disp(' ')
 
 %% Initialize data structure
+
+% Overwrite existing values
+overwrite = 0;
 
 % Load 'v' structure
 load([data_dir filesep 'video_data.mat']);
@@ -22,43 +34,39 @@ v{cCam}.im_dir = im_dir;
 v{cCam}.data_dir = data_dir;
 
 % Make preyROI field, if not present
-if ~isfield(v{cCam},'preyROI') 
+if ~isfield(v{cCam},'preyROI') || overwrite
     v{cCam}.preyROI = nan(length(v{cCam}.frames),4);
 end
 
 % Make preyROI field, if not present
-if ~isfield(v{cCam},'playROI') 
+if ~isfield(v{cCam},'playROI') || overwrite
     v{cCam}.playROI = nan(1,4);
 end
 
 % Make xPrey field, if not present
-if ~isfield(v{cCam},'xPrey') 
+if ~isfield(v{cCam},'xPrey') || overwrite
     v{cCam}.xPrey = nan(length(v{cCam}.frames),1);
 end
 
 % Make yPrey field, if not present
-if ~isfield(v{cCam},'yPrey') 
+if ~isfield(v{cCam},'yPrey') || overwrite
     v{cCam}.yPrey = nan(length(v{cCam}.frames),1);
 end
 
 % Make xPred field, if not present
-if ~isfield(v{cCam},'xPred') 
-    v{cCam}.xPrey = nan(length(v{cCam}.frames),1);
+if ~isfield(v{cCam},'xPred') || overwrite
+    v{cCam}.xPred = nan(length(v{cCam}.frames),1);
 end
 
 % Make yPred field, if not present
-if ~isfield(v{cCam},'yPred') 
-    v{cCam}.yPrey = nan(length(v{cCam}.frames),1);
+if ~isfield(v{cCam},'yPred') || overwrite
+    v{cCam}.yPred = nan(length(v{cCam}.frames),1);
 end
 
 % Save 'v' structure
 save([data_dir filesep 'video_data.mat'],'v');
 
-%% Parameter values
-
-% Width of video frame display (pix)
-% Adjust this to the size of your monitor
-vidWidth = 450;
+%% Get image size
 
 % Load first frame
 im = get_image(im_dir,v{cCam}.frames(1));
@@ -78,6 +86,10 @@ insertButtons(hFig, hAxes, im_dir, v, cCam, pos);
 %% Add text to control video playback.
 insertText(hFig, hAxes, im_dir, v, cCam, pos);
 
+% Update ROI text
+adjust_roi(v, cCam);
+    
+% Update window
 update_fig(hFig, hAxes, im_dir, v, cCam, pos)
 
 %% Result of Pressing the Start Button
@@ -167,18 +179,18 @@ update_fig(hFig, hAxes, im_dir, v, cCam, pos)
                 'position',pos.but_roi, 'tag','setButton','callback', ...
                 {@setCallback, hFig, hAxes, im_dir, v, cCam, pos});
             
-        % Play button with text Start/Pause/Continue
-        uicontrol(hFig,'unit','pixel','style','pushbutton','string','Play',...
-                'position',pos.but_start, 'tag','PBButton123','callback',...
-                {@playCallback, hFig, hAxes, im_dir, v, cCam, pos});
+%         % Play button with text Start/Pause/Continue
+%         uicontrol(hFig,'unit','pixel','style','pushbutton','string','Play',...
+%                 'position',pos.but_start, 'tag','PBButton123','callback',...
+%                 {@playCallback, hFig, hAxes, im_dir, v, cCam, pos});
         
     
-        % Button to track prey    
-        uicontrol(hFig,'unit','pixel','style','pushbutton',...
-                       'string','Track prey',...
-                       'position',pos.but_prey, ...
-                       'tag','preyButton','callback', ...
-                       {@preyCallback, hFig, hAxes, im_dir, v, cCam, pos});
+%         % Button to track prey    
+%         uicontrol(hFig,'unit','pixel','style','pushbutton',...
+%                        'string','Track prey',...
+%                        'position',pos.but_prey, ...
+%                        'tag','preyButton','callback', ...
+%                        {@preyCallback, hFig, hAxes, im_dir, v, cCam, pos});
             
         % Exit button with text Exit
         uicontrol(hFig,'unit','pixel','style','pushbutton','string','Exit',...
@@ -186,13 +198,13 @@ update_fig(hFig, hAxes, im_dir, v, cCam, pos)
                 {@exitCallback,hFig});
     end 
 
-%% Insert Text
+%% Insert Text & Menus
 % Insert buttons to play, pause the videos.
 function insertText(hFig, hAxes, im_dir, v, cCam, pos)
 
 
    % ROI Coordinates     
-   uicontrol(hFig,'unit','pixel','Style','text','String','ROI',...
+   uicontrol(hFig,'unit','pixel','Style','text','String','Press space to play',...
        'Position',pos.text_roi(1,:),'tag','roi_title','BackgroundColor','w'); 
     uicontrol(hFig,'unit','pixel','Style','text','String','0',...
         'Position',pos.text_roi(2,:),'tag','xRect');
@@ -228,12 +240,6 @@ function insertText(hFig, hAxes, im_dir, v, cCam, pos)
    uicontrol(hFig,'unit','pixel','Style','text','String','End:',...
        'Position',pos.text_frame(4,:),'tag','endframe_text'); 
    
-   % Mode     
-   uicontrol(hFig,'unit','pixel','Style','text','String','Mode',...
-       'Position',pos.mode_frame(1,:),'tag','mode_title','BackgroundColor','w'); 
-   uicontrol(hFig,'unit','pixel','Style','text','String','Play',...
-       'Position',pos.mode_frame(2,:),'tag','mode'); 
-   
    % Pause     
    uicontrol(hFig,'unit','pixel','Style','text','String','Frame pause (s)',...
        'Position',pos.pause_frame(1,:),'tag','pause_title','BackgroundColor','w'); 
@@ -252,72 +258,119 @@ function insertText(hFig, hAxes, im_dir, v, cCam, pos)
    uicontrol(hFig,'unit','pixel','Style','text','String','Paused',...
        'Position',pos.status_frame(2,:),'tag','status');
    
-   % Set default mode
-   set_mode('Play');
+   % Mode     
+   uicontrol(hFig,'unit','pixel','Style','text','String','Mode',...
+       'Position',pos.mode_frame(1,:),'tag','mode_title','BackgroundColor','w'); 
+   uicontrol(hFig,'unit','pixel','Style','popup',...
+       'String',{'Play','Prey'},...
+       'Position',pos.mode_frame(2,:),'tag','mode',...
+       'Callback',{@setMode, hFig, hAxes, im_dir, v, cCam, pos},...
+       'ForegroundColor',[0 .5 .5]); 
    
-%    % Get prey coordinates     
-%    if ~isfield(v{cCam},'xPrey')
-%        x = nan(length(v{cCam}.frames),1);
-%        y = nan(length(v{cCam}.frames),1);
-%    else
-%        x = v{cCam}.xPrey;
-%        y = v{cCam}.yPrey;
-%    end
-%    
-%    % Display prey coordinates
-%    uicontrol(hFig,'unit','pixel','Style','text','String','Prey Coord',...
-%        'Position',pos.text_coordPrey(1,:),'tag','coord_title','BackgroundColor','w'); 
-%    uicontrol(hFig,'unit','pixel','Style','text','String',{num2str(x)},...
-%         'Position',pos.text_coordPrey(2,:),'tag','xPrey');
-%    uicontrol(hFig,'unit','pixel','Style','text','String',{num2str(y)},...
-%         'Position',pos.text_coordPrey(3,:),'tag','yPrey');
-%     
-%     % Get predator coordinates     
-%    if ~isfield(v{cCam},'xPred')
-%        x = nan(length(v{cCam}.frames),1);
-%        y = nan(length(v{cCam}.frames),1);
-%    else
-%        x = v{cCam}.xPred;
-%        y = v{cCam}.yPred;
-%    end
-%    
-%    % Display predator coordinates
-%    uicontrol(hFig,'unit','pixel','Style','text','String','Pred Coord',...
-%        'Position',pos.text_coordPred(1,:),'tag','coord_title','BackgroundColor','w'); 
-%     uicontrol(hFig,'unit','pixel','Style','text','String',{num2str(x)},...
-%         'Position',pos.text_coordPred(2,:),'tag','xPred');
-%     uicontrol(hFig,'unit','pixel','Style','text','String',{num2str(y)},...
-%         'Position',pos.text_coordPred(3,:),'tag','yPred');  
+   
+   % View mode     
+   uicontrol(hFig,'unit','pixel','Style','text','String','View mode',...
+       'Position',pos.viewmode_frame(1,:),'tag','viewmode_title','BackgroundColor','w'); 
+   uicontrol(hFig,'unit','pixel','Style','popup',...
+       'String',{'Normal','Back sub'},...
+       'Position',pos.viewmode_frame(2,:),'tag','viewmode',...
+       'Callback',{@setViewMode, hFig, hAxes, im_dir, v, cCam, pos}); 
 end 
 
-%% Play Button Callback
+%% Set Mode
+function setMode(hObject,~, hFig, hAxes, im_dir, v, cCam, pos)   
+    
+    % Load latest data ('v')
+    load([v{cCam}.data_dir filesep 'video_data.mat'])
+    
+    % Get current mode
+    [md,dur,dir,status] = mode_status;
+    
+    if strcmp(md,'Play')
+        set(findobj('tag','mode'),'ForegroundColor',[0 .5 .5])
+        
+        % Set default duration
+        set(findobj('tag','pause'),'String','0.2')
+         
+        % Set title text
+        set(findobj('tag','roi_title'),'String','Press space to play');
+        
+        set_status(0)
+        
+        % View status
+        set(findobj('tag','status_title'),'Visible','on');
+        set(findobj('tag','status'),'Visible','on');
+        
+    elseif strcmp(md,'Prey')
+        set(findobj('tag','mode'),'ForegroundColor',[.3 .7 .2])
+        
+        % Set default duration
+        set(findobj('tag','pause'),'String','1')
+        
+        % Set title text
+        set(findobj('tag','roi_title'),'String','Press SPACE to select point');
+        
+        set_status(1)
+        
+        % View status: off
+        set(findobj('tag','status_title'),'Visible','off');
+        set(findobj('tag','status'),'Visible','off');
+        
+    elseif strcmp(md,'Pred')
+        set(findobj('tag','mode'),'ForegroundColor',[.9 .5 .3])
+        
+        % Set default duration
+        set(findobj('tag','pause'),'String','1')
+        
+        set_status(1)
+        
+        % View status: off
+        set(findobj('tag','status_title'),'Visible','off');
+        set(findobj('tag','status'),'Visible','off');
+    end
+    
+    %Bold the font
+    set(findobj('tag','mode'),'Fontweight','Bold')
+    
+    % Update ROI text
+    adjust_roi(v, cCam);
+    
+    % Update GUI
+    update_fig(hFig, hAxes, im_dir, v, cCam, pos);
+    
+    % Activate ROI panel
+    set(hAxes.axis2,'Selected','on')
+end
+
+%% Set View Mode
+function setViewMode(hObject,~, hFig, hAxes, im_dir, v, cCam, pos)   
+    
+    % Load latest data ('v')
+    load([v{cCam}.data_dir filesep 'video_data.mat'])
+    
+     % Get current mode
+     md = viewmode_status;
+ 
+     % Update GUI
+     update_fig(hFig, hAxes, im_dir, v, cCam, pos);
+     
+     % Activate ROI panel
+     set(hAxes.axis2,'Selected','on')
+end
+
+%% Play Callback
 % This callback function rotates input video frame and displays original
 % input video frame and rotated frame on axes. The function
 % |showFrameOnAxis| is responsible for displaying a frame of the video on
 % user-defined axis. This function is defined in the file
 % <matlab:edit(fullfile(matlabroot,'toolbox','vision','visiondemos','showFrameOnAxis.m')) showFrameOnAxis.m>
-function playCallback(hObject,~, hFig, hAxes, im_dir, v, cCam, pos)
+function playCallback(hFig, hAxes, im_dir, v, cCam, pos)
 
+    % Load latest data ('v')
+    load([v{cCam}.data_dir filesep 'video_data.mat'])
+    
     % Get current status
-    [mode,dur,dir,status] = mode_status;
-    
-    % If not previously in Play mode . . .
-    if ~strcmp(mode,'Play')
-        % Set mode to Play
-        set_mode('Play');
-    end
-    
-    % If paused, set to run
-    if status==0
-        status = 1;
-        
-    % If running, set to pause
-    elseif status==1
-        status = 0;        
-    end
-    
-    % Update status on GUI
-    set_status(status)
+    [md,dur,modedir,status] = mode_status;    
       
     % Set ROI
     if isempty(get_val) || sum(get_val)==0
@@ -328,21 +381,26 @@ function playCallback(hObject,~, hFig, hAxes, im_dir, v, cCam, pos)
 
     % Get current frame number
     obj_frame = findobj('tag','edit_frame');   
-    cFrame = str2num(obj_frame.String) + dir;
+    cFrame = str2num(obj_frame.String) + modedir;
 
     % Loop while in play mode
     while status==1
         % Start timer
-        tic
+        tic        
         
-        % Update button text
-        hObject.String = 'Pause';
+        % If an ROI is stored, set the values
+        if  ~isnan(v{cCam}.playROI(1))
+            set_val(v{cCam}.playROI);        
+        end
         
         % Get current status
-        [mode,dur,dir,status] = mode_status;
+        [md,dur,modedir,status] = mode_status;
         
         % Update frame number
         obj_frame.String = num2str(cFrame);
+        
+        % Update ROI text
+        adjust_roi(v, cCam);
         
         % Upate figure window
         update_fig(hFig, hAxes, im_dir, v, cCam, pos);
@@ -353,14 +411,14 @@ function playCallback(hObject,~, hFig, hAxes, im_dir, v, cCam, pos)
         % Advance frame
         if tlapse < dur
             % Advance single frame
-            cFrame = cFrame + dir;
+            cFrame = cFrame + modedir;
             
             % Wait for next iteration
             pause(dur-tlapse)
             
         else
             % Advance multiple frames
-            cFrame = round(cFrame + (tlapse/dur)*dir);
+            cFrame = round(cFrame + (tlapse/dur)*modedir);
             
         end
         
@@ -369,9 +427,7 @@ function playCallback(hObject,~, hFig, hAxes, im_dir, v, cCam, pos)
             set_status(0)
         end 
     end
-    
-    % Reset button text
-    hObject.String = 'Play';
+
 end
 
 %% Set ROI Callback
@@ -391,29 +447,30 @@ function setCallback(~,~, hFig, hAxes, im_dir, v, cCam, pos)
     % Find ROI values
     rect = get_val;
     
-    % Center of ROI in full frame FOR
+    % Center of ROI (full frame FOR)
     xCntr = rect(1) + rect(3)/2;
     yCntr = rect(2) + rect(4)/2;
     
     % If ROI is out of frame . . .
-    if (xCntr<0) ||  (xCntr>hAxes.axis2.XLim(2)) || ...
-       (yCntr<0) ||  (yCntr>hAxes.axis2.YLim(2))
+    if (xCntr<0) ||  (xCntr>size(hAxes.axis1.Children(end).CData,2)) || ...
+       (yCntr<0) ||  (yCntr>size(hAxes.axis1.Children(end).CData,1))
         
         
         xCntr = hAxes.axis1.XLim(2)/2;
         yCntr = hAxes.axis1.YLim(2)/2;
    
-        % Set ROI
+        % Set ROI (full frame FOR)
         im_rect = [xCntr-hAxes.axis1.XLim(2)/10 yCntr-hAxes.axis1.XLim(2)/10 ...
                 hAxes.axis1.XLim(2)/5 hAxes.axis1.XLim(2)/5];
             
     else
         % Scale rectangle to frame size
-        im_rect = rect .* sc_factor;
+        %im_rect = rect .* sc_factor;
+        im_rect = rect;
     end
 
      
-    % Create interactive ROI
+    % Create interactive ROI (full frame FOR)
     h = imrect(hAxes.axis1,im_rect);
     
     % Change title text
@@ -424,20 +481,14 @@ function setCallback(~,~, hFig, hAxes, im_dir, v, cCam, pos)
     wait(h);
     
     % Get values of new ROI
-    rect = getPosition(h);
+    if isempty(h)
+        rect = get_val
+    else
+        rect = getPosition(h);
+    end
 
     % Make square
     rect(4) = rect(3);
-
-    % Scale to rendered dimensions
-    rect = rect./sc_factor;
-    
-    % Display cropped video frame on axis
-    %im2= imcrop(frame, im_rect);
-    %showFrameOnAxis(hAxes.axis2, im2, 0);
-
-    % Rescale
-    %rect = rect .* sc_factor;
 
     % Set value in GUI
     set_val(rect);
@@ -446,37 +497,36 @@ function setCallback(~,~, hFig, hAxes, im_dir, v, cCam, pos)
         delete(hAxes.axis1.Children(1:(end-1)))
     end
 
-    %hObject = findobj('tag','PBButton123');
-    %hObject.String = 'Play';
-
     % Get current status
-    [mode,dur,dir,status] = mode_status;
+    [mode,dur,modedir,status] = mode_status;
+    
+    % Get current frame
+    cFrame = str2num(get(findobj('tag','edit_frame'),'String'));
+    
+    % Index of new current frame
+    iFrame = find(cFrame==v{cCam}.frames,1,'first');
     
     % Set coordinate values for Play mode
     if strcmp(mode,'Play')
         v{cCam}.playROI = rect;
     
-    % Set coordinate values for prey mode    
-    elseif strcmp(mode,'Prey')
+    % Set coordinate values for prey mode & rest are nans   
+    elseif strcmp(mode,'Prey') 
         
-       % Make field, if not present, & fill with new ROI
-       if ~isfield(v{cCam},'preyROI') 
-          v{cCam}.preyROI = repmat(rect,length(v{cCam}.frames),1);
-          
-       else
-           % Current frame
-           obj_frame = findobj('tag','edit_frame');
-           cFrame = str2num(obj_frame.String);
-           
-           % Index of current frame
-           iFrame = find(cFrame==v{cCam}.frames,1,'first');
-           
-           % Index of remaining frames
-           idx = iFrame:length(v{cCam}.frames);
-           
-           % Fill with current ROI
-           v{cCam}.preyROI(idx,:) = repmat(rect,length(idx),1);
-       end
+        % If all nans remain
+        if sum(isnan(v{cCam}.preyROI(iFrame:end,1)))==0
+            % Index of remaining frames
+            idx = iFrame:length(v{cCam}.frames);
+        else
+            % Index of non-nans
+            iNonNan = [v{cCam}.frames>iFrame]' & ~isnan(v{cCam}.preyROI(:,1));
+            
+            % Index of remaining frames
+            idx = iFrame:find(iNonNan,1,'first');
+        end
+        
+        % Fill with current ROI
+        v{cCam}.preyROI(idx,:) = repmat(rect,length(idx),1);
     end
     
     % Save coordinates
@@ -487,203 +537,98 @@ function setCallback(~,~, hFig, hAxes, im_dir, v, cCam, pos)
     
     % Update figure
     update_fig(hFig, hAxes, im_dir, v, cCam, pos)
+    
+    % Activate ROI panel
+    set(hAxes.axis2,'Selected','on')
 end
 
 %% Set Prey Callback
 % This callback function releases system objects and closes figure window.
-function preyCallback(hButton,~, hFig, hAxes, im_dir, v, cCam, pos)
+function preyCallback(hFig, hAxes, im_dir, v, cCam, pos)
     
-    % Region within roi where roi doesn't move
-    sense_region = 0.2;
-    
-    % Handle for title text
-    htitle = findobj('tag','title2');  
-    
-    % Reset recent key press
-    set(findobj('tag','key'),'String',num2str(0))
-    
-    % Activate figure 
+    % Activate figure
     figure(hFig)
     
+     % Activate ROI panel
+    set(hAxes.axis2,'Selected','on')
+    
+    % Get cursor coordinates
+    xCntr = str2num(get(findobj('tag','xMouse'),'String'));
+    yCntr = str2num(get(findobj('tag','yMouse'),'String'));
+    
+    % Transform into ROI FOR
+    [xCurr, yCurr] = full_to_roi(xCntr, yCntr);
+    
+    % Overlay point
+    set(hAxes.axis2,'NextPlot','Add');
+    h = plot(xCurr, yCurr,'+r','Parent',hAxes.axis2);
+    set(h,'MarkerSize',5)
+    set(hAxes.axis2,'NextPlot','Replace');
+    pause(.5)
+    
+    % Load latest data ('v')
+    load([v{cCam}.data_dir filesep 'video_data.mat'])
+     
+    % Get current frame number
+    cFrame = str2num(get(findobj('tag','edit_frame'),'String'));
+    
+     % Index of new current frame
+    iFrame = find(cFrame==v{cCam}.frames,1,'first');
+    
+    % Store coordinates
+    v{cCam}.xPrey(iFrame)   = xCntr;
+    v{cCam}.yPrey(iFrame)   = yCntr;
+    
+    % Handle for title text
+    %htitle = findobj('tag','title2');  
+    
+    % Activate figure 
+    %figure(hFig)
+    
+    % Activate ROI panel
+    %set(hAxes.axis2,'Selected','on')
+    
     % Get current status
-    [mode,dur,dir,status] = mode_status;
-        
-    % If starting Prey mode
-    if ~strcmp(mode,'Prey')        
-        % Switch to prey mode
-        set_mode('Prey')       
-    end  
+    [mode,dur,modedir,status] = mode_status;
     
-    % If paused, set to run
-    if status==0
-        status = 1;
-        
-        % Run countdown
-        for i = 2:-1:1
-            set(findobj('tag','title2'),'String',['ROI: start in ' num2str(i) ])
-            pause(1)
-        end
-        
-    % If running, set to pause
-    elseif status==1
-        status = 0;        
+    % Advance single frame
+    cFrame = cFrame + modedir;
+    
+    % Stop, if next frame is out of bounds
+    if (cFrame >= max(v{cCam}.frames)) || cFrame <= 0
+        beep
+        return
     end
     
-    % Update status on GUI
-    set_status(status)
+    % Set text for next frame number
+    set(findobj('tag','edit_frame'),'String',num2str(cFrame));
     
-%     % Initiate timer, when starting to run
-%     if strcmp(hButton.String,'Tracking')
-%         for i = 2:-1:1
-%             set(findobj('tag','title2'),'String',['ROI: start in ' num2str(i) ])
-%             pause(1)
-%         end
-%         % Set status text
-%         set(findobj('tag','title2'),'String',['Tracking . . .'])
-%         
-%     % If in tracking mode, but are resuming . . .    
-%     %elseif strcmp(hButton.String,'Tracking')
-%         % Set status text
-%      %   set(findobj('tag','title2'),'String',['Tracking . . .'])
-%     end
+    % Get current ROI
+    rect = get_val;
     
-    % Scale factor
-    sc_factor = size(hAxes.axis1.Children(end).CData,2)/hAxes.axis1.Position(3);
-    
-    % Get current frame
-    obj_frame = findobj('tag','edit_frame');
-    cFrame    = str2num(obj_frame.String); 
-    
-    % Loop while tracking button is depressed
-    while status==1
-        
-        % Start timer
-        tic
-        
-        % Index of current frame
-        iFrame = find(cFrame==v{cCam}.frames,1,'first');
-        
-        % Set text for current frame number
-        obj_frame.String = num2str(cFrame);
-        
-        % Update button text
-        hButton.String = 'Tracking';
-        set(findobj('tag','title2'),'String','Tracking . . .')
-        
-        % Get coordinates
-        %[xPrey, yPrey, xPred, yPred] = get_coords;
-        
-        % Get prior ROI values
-        rect = get_val.*sc_factor;
-        
-        % Get normalized cursor coordinates in ROI
-        normX = str2num(get(findobj('tag','xMouse'),'String'))/range(hAxes.axis2.XLim);
-        normY = str2num(get(findobj('tag','yMouse'),'String'))/range(hAxes.axis2.YLim);
-        
-        %normX = 0.5; normY = 0.25;
-        
-        % If beyond first frame and prior frame is not a nan
-%         if (iFrame>1) && isfield(v{cCam},'xPrey') && ~isnan(v{cCam}.xPrey(iFrame-1))
-%             % Center coordinates set to last frame
-%             xCntr = v{cCam}.xPrey(iFrame-1);
-%             yCntr = v{cCam}.yPrey(iFrame-1);
-%         
-%         else
-            % Center of ROI in full frame FOR
-            xCntr = normX*rect(3) + rect(1);
-            yCntr = normY*rect(4) + rect(2);
-            
-%        end
-        
-         % Center of ROI in full frame FOR
-         %xCntr = normX*rect(3) + rect(1);
-         %yCntr = normY*rect(4) + rect(2);         
-            
-%         % If cursor not in center region . . .
-%         if (normX > (1-sense_region)) || (normX < sense_region) || ...
-%            (normY > (1-sense_region)) || (normY < sense_region)      
-%             
-            % New ROI Position centered on cursor
-            rect = [xCntr-rect(3)/2 yCntr-rect(4)/2 rect(3) rect(4)] ./sc_factor;
-            
-            % Update ROI text
-            set_val(rect)
-            
-            % Set coordinate values
-            
-            v{cCam}.xPrey(iFrame)     = xCntr;
-            v{cCam}.yPrey(iFrame)     = yCntr;
-            v{cCam}.preyROI(iFrame,:) = rect;
-            
-            % Save latest data ('v')
-            save([v{cCam}.data_dir filesep 'video_data.mat'],'v')
-            
-            % Update window 
-            update_fig(hFig, hAxes, im_dir, v, cCam, pos);
-            
-            % Update wind ow text
-            %htitle.String = 'Moved ROI. Press space to resume';
-            
-            % Update button text to stop tracking
-            %hButton.String = 'Track prey';
-            
-        % If cursor in center of frame . . .
-        %else
-            % Update window witthout delay
-            %update_fig(hFig, hAxes, im_dir, v, cCam, pos);    
-            %pause(dur)
-            
-            
-            
-            
-            
-%             % If at end of snippet . . .
-%             if cFrame == max(v{cCam}.frames)
-%                 hButton.String = 'Track prey';
-%                 
-%             % Otherwise, advance frame
-%             else
-%                 cFrame = cFrame + 1;
-%             end
-        %end
- 
-        % Update text
-        %set(findobj('tag','xPrey'),'String',{num2str(xPrey)})
-        %set(findobj('tag','yPrey'),'String',{num2str(yPrey)})
-        
-%         hold on
-%         h = plot(hAxes.axis2.XLim,hAxes.axis2.YLim,'w-',...
-%                  'Parent',hAxes.axis2); 
-%         hold off
-        
-     
-        % Advance single frame
-        cFrame = cFrame + dir;
-      
-        % Exit, if next frame is out of bounds
-        if (cFrame >= max(v{cCam}.frames)) || cFrame <= 0
-            set_status(0)
-        end 
-        
-        % Get delay
-        tlapse = toc;
-        
-        % Pause for next iteration
-        if tlapse<dur
-            pause(dur-tlapse)
-        else
-            pause(dur)
-        end
-        
-        % Get current status for next iteration
-        [mode,dur,dir,status] = mode_status;
+    % Specify ROI for next frame
+    if modedir==1
+        rect = [xCntr-rect(3)/2 yCntr-rect(4)/2 rect(3) rect(4)];
+    elseif (modedir==-1) && (iFrame>1) && ~isnan(v{cCam}.preyROI(iFrame-1,1))
+        rect = v{cCam}.preyROI(iFrame-1,:);
+    else
+        rect = get_val;
     end
-     
-    % Reset text
-    % Update button text
-    hButton.String = 'Track prey';
+
+    % Update ROI text
+    %set_val(rect)
     
-    %set(findobj('tag','title2'),'String','ROI')
+    % Set coordinate values
+    v{cCam}.preyROI(iFrame+1,:) = rect;
+    
+    % Save latest data ('v')
+    save([v{cCam}.data_dir filesep 'video_data.mat'],'v')
+    
+    % Update ROI text
+    adjust_roi(v, cCam);
+    
+    % Update window
+    update_fig(hFig, hAxes, im_dir, v, cCam, pos);
 end
 
 %% Exit Button Callback
@@ -698,18 +643,32 @@ function [X,Y] = mouseMove(fig,~, hFig, hAxes, im_dir, v, cCam, pos)
 % Action when the cursor is moved over the figure window
     
     % Collect current point
-    C = get (hAxes.axis2, 'CurrentPoint');
+    C = get(hAxes.axis2, 'CurrentPoint');
+    
     
     if (C(1,1)>=0) && (C(1,1)<=hAxes.axis2.XLim(2)) && ...
        (C(1,2)>=0) && (C(1,2)<=hAxes.axis2.YLim(2))     
    
+        % Find ROI values
+        rect = get_val;
+        
+        % Set cursor
         set(gcf,'Pointer','circle')
         
+        % Get text handles
         objX = findobj('tag','xMouse');
         objY = findobj('tag','yMouse');
     
-        X = min([max([0 C(1,1)]) hAxes.axis2.XLim(2)]);
-        Y = min([max([0 C(1,2)]) hAxes.axis2.YLim(2)]);
+        % Coordinates in full frame FOR
+        Xfull = C(1,1)./range(hAxes.axis2.XLim).* rect(3) + rect(1);
+        Yfull = C(1,2)./range(hAxes.axis2.YLim).* rect(4) + rect(2);
+        
+        % Report X and Y within frame
+        X = min([max([rect(1) Xfull]) rect(1)+rect(3)]);
+        Y = min([max([rect(2) Yfull]) rect(2)+rect(4)]);
+        
+        %X = min([max([0 C(1,1)]) hAxes.axis2.XLim(2)]);
+        %Y = min([max([0 C(1,2)]) hAxes.axis2.YLim(2)]);
         
         objX.String = num2str(X);
         objY.String = num2str(Y);
@@ -739,12 +698,21 @@ function but_down(fig, key, hFig, hAxes, im_dir, v, cCam, pos)
             ((C1(1,1)>0) && (C1(1,1)<hAxes.axis1.XLim(2)) && ...
             (C1(1,2)>0) && (C1(1,2)<hAxes.axis1.YLim(2)))
         
+        % Load latest data ('v')
+        load([v{cCam}.data_dir filesep 'video_data.mat'])
+ 
+        % Update window 
+        %update_fig(hFig, hAxes, im_dir, v, cCam, pos);
+        
         % Get handles for prey and play buttons
         preyButton = findobj('tag','preyButton');
         playButton = findobj('tag','PBButton123');
         preyTitle  = findobj('tag','title2');
         
-        % If a number is pressed
+        % Get mode status
+        [mode,dur,modedir,status] = mode_status;
+        
+        % NUMBER ---------------------------------------------------------- 
         if sum(obj.String(1)==num2str([1:9]))==1
             % Set relative frame number
             rel_frame = round((str2num(obj.String)-1)/9*range(v{cCam}.frames) + ...
@@ -752,15 +720,15 @@ function but_down(fig, key, hFig, hAxes, im_dir, v, cCam, pos)
             set(findobj('tag','edit_frame'),'String',num2str(rel_frame));
             update_fig(hFig, hAxes, im_dir, v, cCam, pos);
             
-        % If left arrow pressed . . .
+        % LEFT ARROW ------------------------------------------------------
         elseif strcmp(obj.String,'leftarrow')
             set(findobj('tag','dir'),'String','<-');
             
-        % If right arrow pressed . . .
+        % RIGHT ARROW -----------------------------------------------------
         elseif strcmp(obj.String,'rightarrow')
             set(findobj('tag','dir'),'String','->');
             
-        % If up arrow pressed . . .
+        % UPARROW --------------------------------------------------------- 
         elseif strcmp(obj.String,'uparrow')
             % Handle of frame edit box
             hFrame = findobj('tag','edit_frame');
@@ -774,10 +742,13 @@ function but_down(fig, key, hFig, hAxes, im_dir, v, cCam, pos)
             % Update box
             set(hFrame,'String',num2str(cFrame));
             
+            % Update ROI text
+            %adjust_roi(v, cCam);
+        
             % Update GUI
             update_fig(hFig, hAxes, im_dir, v, cCam, pos);
             
-        % If down arrow is pressed . . .
+        % DOWNARROW -------------------------------------------------------
         elseif strcmp(obj.String,'downarrow')
             % Handle of frame edit box
             hFrame = findobj('tag','edit_frame');
@@ -793,87 +764,73 @@ function but_down(fig, key, hFig, hAxes, im_dir, v, cCam, pos)
             
             % Update GUI
             update_fig(hFig, hAxes, im_dir, v, cCam, pos);
+        
             
-        elseif strcmp(obj.String,'space')
-            [mode,dur,dir,status] = mode_status;
+        % EQUAL/HYPHEN ---------------------------------------------------- 
+        elseif strcmp(obj.String,'equal') || strcmp(obj.String,'hyphen')
             
-            if status==1
-               set_status(0)  
-               
-            elseif (status==0) && strcmp(mode,'Play') 
-                playCallback(findobj('tag','PBButton123'),[], hFig, hAxes, ...
-                                   im_dir, v, cCam, pos);
-                               
-            elseif (status==0) && strcmp(mode,'Prey') 
-                preyCallback(findobj('tag','preyButton'),[], hFig, hAxes, ...
-                                   im_dir, v, cCam, pos);
+            if strcmp(obj.String,'equal')
+                sc_val = 0.75;
+            else
+                sc_val = 1.25;
             end
+            
+            % Get ROI values
+            rect = get_val;
+            
+            % Find center
+            xCntr = rect(1) + rect(3)/2;
+            yCntr = rect(2) + rect(4)/2;
+            
+            % Rescale ROI dimensions
+            rect(3) = rect(3)*sc_val;
+            rect(4) = rect(4)*sc_val;
+            
+            % Define whole ROI
+            rect = [xCntr-rect(3)/2 yCntr-rect(4)/2 rect(3) rect(4)];
+            
+            % Set ROI text
+            set_val(rect);
+            
+            if strcmp(mode,'Prey')
+                % Get current frame number
+                cFrame = str2num(get(findobj('tag','edit_frame'),'String'));
+            
+                % Index of new current frame
+                iFrame = find(cFrame==v{cCam}.frames,1,'first');
+    
+                % Set coordinate values
+                v{cCam}.preyROI(iFrame,:) = rect;
+                
+                % Save latest data ('v')
+                save([v{cCam}.data_dir filesep 'video_data.mat'],'v')
+            end
+            
+            % Update window 
+            update_fig(hFig, hAxes, im_dir, v, cCam, pos);
+            
+            
+        % SPACEBAR --------------------------------------------------------    
+        elseif strcmp(obj.String,'space')
+            
+            if strcmp(mode,'Play')
+                if status==1
+                    set_status(0)
+                    set(findobj('tag','title2'),'String','Paused [space to restart]')
+                    
+                elseif (status==0) 
+                    set_status(1)
+                    set(findobj('tag','title2'),'String','Playing [space to stop]')
+                    playCallback(hFig, hAxes, im_dir, v, cCam, pos);
+                end
+                
+            elseif strcmp(mode,'Prey')
+                set_status(1)
+                preyCallback(hFig, hAxes, im_dir, v, cCam, pos);          
+            end
+        
         end
-        
-    end
-    % If spacebar pressed . . .
-    %elseif strcmp(obj.String,'space')    
-        % Get current status
-        %[mode,dur,dir,status] = mode_status;
-        
-%         % If paused, set to run
-%         if status==0
-%             status = 1;
-%             
-%         % If running, set to pause
-%         elseif status==1
-%             status = 0;
-%         end
-%         
-%         % Update status on GUI
-%         set_status(status)    
-        
-        % Action, as if button pressed 
-%         if strcmp(mode,'Play')
-%             playCallback(findobj('tag','PBButton123'),[], hFig, hAxes, ...
-%                                   im_dir, v, cCam, pos);
-%         end
-    %2end
-    
-    % Cursor coordinates
-    %C = get(hAxes.axis2, 'CurrentPoint');
-    
-%     % If cursor is within axis frame . . .
-%     if (C(1,1)>0) && (C(1,1)<hAxes.axis2.XLim(2)) && ...
-%             (C(1,2)>0) && (C(1,2)<hAxes.axis2.YLim(2))
-%         
-%         % Change cursor shape
-%         set(gcf,'Pointer','crosshair')
-%         
-%         % Get keystroke, display in key textbox
-%         obj = findobj('tag','key');
-%         obj.String = key.Key;
-%         
-%         
-%             
-% %         % If spacebar pressed . . .
-% %         elseif strcmp(obj.String,'space')
-% %             
-% %             % And in tracking mode . . .
-% %             if strcmp(preyButton.String,'Tracking') || ...
-% %                strcmp(preyTitle.String, 'Moved ROI. Press space to resume')
-% %                 
-% %                 % Press prey tarcking button
-% %                 preyCallback(preyButton,[], hFig, hAxes, ...
-% %                     im_dir, v, cCam, pos);
-% %                 
-% %                 % Otherwise, play
-% %             else
-% %                 %             playCallback(findobj('tag','PBButton123'),[], hFig, hAxes, ...
-% %                 %                 im_dir, v, cCam, pos);
-% %                 disp('Otherwise . . .')
-% %             end
-% %         end
-% %         
-%     % If cursor is outside of frame . . .
-%     else
-%         set(gcf,'Pointer','arrow')
-%     end
+    end 
 end
 
 %% Set Window position and dimensions
@@ -991,13 +948,13 @@ function pos = winDimens(winWidth1,imWidth,imHeight)
     % mode
     pos.mode_frame(1,:) = [xEdge2+0.5*bSize yEdge2-4.5*butHeight ...
                            1.5*butWidth butHeight/2];
-    pos.mode_frame(2,:) = [xEdge2+0.5*bSize yEdge2-5.25*butHeight ...
-                           1.5*butWidth 0.75*butHeight]; 
+    pos.mode_frame(2,:) = [xEdge2+0.4*bSize yEdge2-5.75*butHeight ...
+                           1.75*butWidth 1.2*butHeight]; 
                        
     % pause
-    pos.pause_frame(1,:) = [xEdge2+0.5*bSize yEdge2-6.25*butHeight ...
+    pos.pause_frame(1,:) = [xEdge2+0.5*bSize yEdge2-6.50*butHeight ...
                            1.5*butWidth butHeight/2];
-    pos.pause_frame(2,:) = [xEdge2+0.5*bSize yEdge2-7*butHeight ...
+    pos.pause_frame(2,:) = [xEdge2+0.5*bSize yEdge2-7.25*butHeight ...
                            1.5*butWidth 0.75*butHeight]; 
                        
     % direction
@@ -1010,7 +967,13 @@ function pos = winDimens(winWidth1,imWidth,imHeight)
     pos.status_frame(1,:) = [xEdge2+0.5*bSize yEdge2-9.75*butHeight ...
                            1.5*butWidth butHeight/2];
     pos.status_frame(2,:) = [xEdge2+0.5*bSize yEdge2-10.5*butHeight ...
-                           1.5*butWidth 0.75*butHeight];                        
+                           1.5*butWidth 0.75*butHeight];  
+                       
+    % View mode
+    pos.viewmode_frame(1,:) = [xEdge2+0.5*bSize yEdge2-11.5*butHeight ...
+                           1.5*butWidth butHeight/2];
+    pos.viewmode_frame(2,:) = [xEdge2+0.3*bSize yEdge2-12.25*butHeight ...
+                           2*butWidth 0.75*butHeight];                     
 end
 
 
@@ -1028,15 +991,35 @@ function update_fig(hFig, hAxes, im_dir, v, cCam, pos)
     % Activate figure window
     figure(hFig)
     
+    % Update ROI text
+    adjust_roi(v, cCam);
+            
+    % Scale factor (source pixel width / rendered width) of full frame
+    %sc_factor = size(hAxes.axis1.Children(end).CData,2)/hAxes.axis1.Position(3);
+    
     % Handle for frame edit box
     edit_frame = findobj('tag','edit_frame');
     
     % Get current status
-    [mode,dur,dir,status] = mode_status;
+    [mode,dur,modedir,status] = mode_status;
     
-    % Get window dimensions
-    winWidth1 = pos.win_full(3);
-    winHeight1 = pos.win_full(4);
+    % Get view mode status
+    viewmode = viewmode_status;
+    
+    % If background subtraction requested . . .
+    if strcmp(viewmode,'Back sub')
+        % Look for mean image
+        a2 = dir([v{cCam}.data_dir filesep 'meanImage.tif']);
+        
+        % Calculate mean image, if it does not exist
+        if isempty(a2)
+           makeMeanImage(v{cCam}.data_dir,im_dir,v{cCam}.frames);
+           
+        % Otherwise, load it
+        else
+            imSub = imread([v{cCam}.data_dir filesep 'meanImage.tif']);
+        end
+    end
     
     % Set text show start & end frames
     set(findobj('tag','startframe_text'),'String',...
@@ -1063,26 +1046,44 @@ function update_fig(hFig, hAxes, im_dir, v, cCam, pos)
 
     % Read input video frame
     frame = get_image(im_dir,v{cCam}.frames(iFrame));
-
-    % Get coordinates for the ROI
-    rect = get_val;
     
-    % Center of ROI in full frame FOR
-    xCntr = rect(1) + rect(3)/2;
-    yCntr = rect(2) + rect(4)/2;   
+    if strcmp(viewmode,'Back sub')
+        % Convert to grayscale
+        frame = rgb2gray(frame);
         
-    % In Play mode . . .
-    if strcmp(mode,'Play') && ~isnan(v{cCam}.playROI(1))
-        rect = v{cCam}.playROI;
-
-     % In Prey mode . . .    
-    elseif strcmp(mode,'Prey') && ~isnan(v{cCam}.preyROI(iFrame,1))
-         rect = v{cCam}.preyROI(iFrame,:);
-
-     % If rect is undefined or off frame
-     elseif isempty(rect) || sum(rect)==0 || ...
-            (xCntr<0) ||  (xCntr>hAxes.axis2.XLim(2)) || ...
-            (yCntr<0) ||  (yCntr>hAxes.axis2.YLim(2))
+        % Adjust grayscale values and convert to double
+        frame     = imadjust(frame);
+        imSub     = imadjust(imSub);
+        
+        % Subtract background
+        warning off
+        frame = imcomplement(imsubtract(imSub,frame));
+        warning on
+        
+        % Enhance contrast
+        frame     = imadjust(frame);
+    end
+    
+    % Display full video frame
+    delete(hAxes.axis1.Children)
+    showFrameOnAxis(hAxes.axis1, frame, 0);
+    pause(0.001) 
+    
+    % Get window dimensions (full frame FOR)
+    winWidth1  = size(hAxes.axis1.Children(end).CData,2);
+    winHeight1 = size(hAxes.axis1.Children(end).CData,1);    
+    
+    % Get coordinates for the ROI (Full frame FOR)
+    rect = get_val;
+   
+    % Center of ROI (Full frame FOR)
+    xCntr = rect(1) + rect(3)/2;
+    yCntr = rect(2) + rect(4)/2;          
+        
+    % If rect is undefined or off frame
+    if isempty(rect) || sum(rect)==0 || ...
+            (xCntr<0) ||  (xCntr>winWidth1) || ...
+            (yCntr<0) ||  (yCntr>winHeight1)
 
         % Set rect values to center of frame
         rect(1,1) = winWidth1/2-winWidth1/5/2;
@@ -1094,33 +1095,15 @@ function update_fig(hFig, hAxes, im_dir, v, cCam, pos)
     % Update roi box
     set_val(rect);
     
-    % Display full video frame
-    delete(hAxes.axis1.Children)
-    showFrameOnAxis(hAxes.axis1, frame, 0);
-    
-    
-    % Display frame numbers
-    %time_str = convert_time(v{cCam}.frames(cFrame)./v{cCam}.framerate);
-    %title1.String = ['Frame ' num2str(v{cCam}.frames(cFrame)) ...
-    %    '    [' time_str ']'];
-    
-    % Scale rectangle to frame size
-    im_rect = rect .* size(frame,2)/hAxes.axis1.Position(3);
-    
-%     % Delete existing ROI
-%     if length(hAxes.axis1.Children)>1
-%         delete(hAxes.axis1.Children(1:(end-1)))
-%     end
-    
-    % Hold on
+    % Hold on Axis1
     set(hAxes.axis1,'NextPlot','Add')
     
     % Set roi square on full frame
-    x1 = im_rect(1); x2 = im_rect(1)+im_rect(3);
-    y1 = im_rect(2); y2 = im_rect(2)+im_rect(4);
+    x1 = rect(1); x2 = rect(1)+rect(3);
+    y1 = rect(2); y2 = rect(2)+rect(4);
     plot([x1 x2 x2 x1 x1], [y1 y1 y2 y2 y1], 'w-',...
-          mean([x1 x2]).*[1 1],[y1 y2], 'w:', ...
-          [x1 x2], mean([y1 y2]).*[1 1], 'w:',...
+         mean([x1 x2]).*[1 1],[y1 y2], 'w:', ...
+         [x1 x2], mean([y1 y2]).*[1 1], 'w:',...
          'Parent',hAxes.axis1);
     
     % In Prey mode
@@ -1129,56 +1112,120 @@ function update_fig(hFig, hAxes, im_dir, v, cCam, pos)
         idx = 1:find(iFrame);
         
         % Plot prior coordinates
-        h = plot(v{cCam}.xPrey(idx),v{cCam}.yPrey(idx),'w:+', ...
+        h = plot(v{cCam}.xPrey(idx),v{cCam}.yPrey(idx),'r', ...
             'Parent',hAxes.axis1);
         set(h,'MarkerSize',3)
     end
      
-    % Hold off 
+    % Hold off Axis1
     set(hAxes.axis1,'NextPlot','Replace');
     
-    %set_val(rect);
-    
     % Get cropped image
-    im2 = imcrop(frame, im_rect);
+    im2 = imcrop(frame, rect);
     
     % Display cropped image
     delete(hAxes.axis2.Children);
     showFrameOnAxis(hAxes.axis2, im2, 0);
     
-    % Cross hairs
-    
+    % Limits for x and y axes
     xL = hAxes.axis2.XLim;
     yL = hAxes.axis2.YLim;
     
+    % Hold on Axis 2
     set(hAxes.axis2,'NextPlot','Add');
     
     % Add cross hairs
      h = plot([mean(xL) mean(xL)],yL,'w:',xL,[mean(yL) mean(yL)],'w:',...
          'Parent',hAxes.axis2);
      
+     % In Play mode . . .
+     if strcmp(mode,'Play')
+        [xPrey, yPrey] = full_to_roi(v{cCam}.xPrey(iFrame), ...
+                                      v{cCam}.yPrey(iFrame));
+         h(2) = plot(xPrey, yPrey,'+y','Parent',hAxes.axis2);
+         set(h(2),'MarkerSize',5)
+         
      % In Prey mode . . .
-     if strcmp(mode,'Prey')
-         % Index of prior frames
-         idx = 1:find(iFrame);
+     elseif strcmp(mode,'Prey')
          
-         % Transform coordinate values
-         xVal = v{cCam}.xPrey(idx);
-         yVal = v{cCam}.yPrey(idx);
-         
+         [xPrior, yPrior] = full_to_roi(v{cCam}.xPrey, ...
+                                v{cCam}.yPrey );
+         [xCurr, yCurr] = full_to_roi(v{cCam}.xPrey(iFrame), ...
+                                      v{cCam}.yPrey(iFrame));
+       
          % Plot prior coordinates
-         h = plot(xVal, yVal,'w:+', 'Parent',hAxes.axis2);
-         set(h,'MarkerSize',5)
+         
+         h(1) = plot(xPrior, yPrior,'w--',...
+             'Parent',hAxes.axis2);
+         
+         h(2) = plot(xCurr, yCurr,'+r','Parent',hAxes.axis2);
+         set(h(2),'MarkerSize',5)
      end
      
+    % Hold off Axis 2
     set(hAxes.axis2,'NextPlot','Replace');
+    
+    % Activate figure
+    figure(hFig)
+    
+     % Activate ROI panel
+    set(hAxes.axis2,'Selected','on')
 end
 
 %% Misc helper functions
 
-function [mode,dur,dir,status] = mode_status
+function adjust_roi(v, cCam)
+    
+    % Get status
+    [md,dur,dir,status] = mode_status;
+    
+    % Get current roi
+    rect = get_val;
+    
+    % Get current frame number
+    cFrame = str2num(get(findobj('tag','edit_frame'),'String'));
+    
+     % Index of new current frame
+    iFrame = find(cFrame==v{cCam}.frames,1,'first');
+    
+    % PLAY mode
+    if strcmp(md,'Play') && ~isnan(v{cCam}.playROI(1,1))
+            rect = v{cCam}.playROI;
+        
+        
+    % PREY mode    
+    elseif strcmp(md,'Prey') && ~isnan(v{cCam}.preyROI(iFrame,1))
+       rect = v{cCam}.preyROI(iFrame,:);  
+       
+    elseif strcmp(md,'Prey') && ~isnan(v{cCam}.playROI(1,1))
+        rect = v{cCam}.playROI;
+    end
+    
+    % Update text
+    set_val(rect);
+
+end
+
+function [x, y] = full_to_roi(xVal,yVal)
+% Converts from full frame coordinates to ROI coords    
+     % Get ROI
+     rect = get_val;
+
+     % Normalize to size of rendered frame
+     xNorm = (xVal-rect(1))/rect(3);
+     yNorm = (yVal-rect(2))/rect(4);
+
+     % Transform into frame coords
+     x = xNorm .* range(hAxes.axis2.XLim) + hAxes.axis2.XLim(1);
+     y = yNorm .* range(hAxes.axis2.YLim) + hAxes.axis2.YLim(1);
+end
+
+function [md,dur,dir,status] = mode_status
     % Get mode
-    mode = get(findobj('tag','mode'),'String'); 
+    hMode = findobj('tag','mode');
+    
+    % Current mode
+    md = hMode.String{hMode.Value};
     
     % Get pause
     dur = str2num(get(findobj('tag','pause'),'String')); 
@@ -1202,6 +1249,14 @@ function [mode,dur,dir,status] = mode_status
     else
         status = 0;
     end
+end
+
+function md = viewmode_status
+    % Get mode address
+    hMode = findobj('tag','viewmode');
+    
+     % Current mode string
+    md = hMode.String{hMode.Value};
 end
 
 function set_status(status)
@@ -1231,6 +1286,7 @@ function set_mode(mde)
         
         % Set default duration
         set(findobj('tag','pause'),'String','1')
+    
     else
         set(findobj('tag','mode'),'String','-');
         set(findobj('tag','mode'),'BackgroundColor',0.5.*[1 1 1]);
@@ -1264,8 +1320,7 @@ function [xPrey, yPrey, xPred, yPred] = get_coords
 end
 
 
-function im = get_image(im_dir,fr_num)
-    
+function im = get_image(im_dir,fr_num)    
     tmp = ['0000000' num2str(fr_num)];
     tmp = tmp(end-6:end);
     im_name = ['frame_' tmp '.jpeg'];
@@ -1318,6 +1373,70 @@ function set_val(rect)
     
     obj = findobj('tag','hRect');
     obj.String = num2str((rect(4)));
+end
+
+function showFrameOnAxis(hAxis, frame, includeScroll)
+    % This helper function  displays a frame of video on a user-defined axis.
+
+    frame = convertToUint8RGB(frame);
+
+    try
+        hChild = get(hAxis, 'Children');
+    catch %#ok<CTCH>
+        return; % hAxis does not exist; nothing to draw
+    end
+
+    isFirstTime = isempty(hChild);
+
+    if isFirstTime
+        hIm = displayImage(hAxis, frame);
+        if includeScroll
+            addScrollPanel(hAxis, hIm);
+        end
+    else
+        hIm = hChild(end);
+
+        try
+            set(hIm,'cdata',frame); drawnow;
+        catch  %#ok<CTCH>
+            % figure closed
+            return;
+        end
+    end
+end
+
+function frame = convertToUint8RGB(frame)
+    % Convert input data type to uint8
+    if ~isa(class(frame), 'uint8')
+        frame = im2uint8(frame);
+    end
+
+    % If the input is grayscale, turn it into an RGB image
+    if (size(frame,3) ~= 3) % must be 2d
+        frame = cat(3,frame, frame, frame);
+    end
+end
+
+function hIm = displayImage(hAxis, frame)
+% Display image in the specified axis
+frameSize = size(frame);
+xdata = [1 frameSize(2)];
+ydata = [1 frameSize(1)];
+cdata = frame;
+cdatamapping = 'direct';
+
+hIm = image(xdata,ydata,cdata, ...
+           'BusyAction', 'cancel', ...
+           'Parent', hAxis, ...
+           'CDataMapping', cdatamapping, ...
+           'Interruptible', 'off');
+set(hAxis, ...
+    'YDir','reverse',...
+    'TickDir', 'out', ...
+    'XGrid', 'off', ...
+    'YGrid', 'off', ...
+    'PlotBoxAspectRatioMode', 'auto', ...
+    'Visible', 'off');
 end
 
 end

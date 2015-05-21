@@ -21,7 +21,6 @@ dur_eval = 0.5;
 
 %% Paths
 
-
 % Get root paths
 root = give_paths;
 
